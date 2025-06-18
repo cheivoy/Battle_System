@@ -35,7 +35,7 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // 靜態檔案
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // 保護路由
 const ensureAuthenticated = (req, res, next) => {
@@ -54,19 +54,19 @@ app.use('/api', require('./routes/api'));
 // 頁面路由
 app.get(['/', '/index.html'], (req, res) => {
     if (req.isAuthenticated()) {
-        res.sendFile(path.join(__dirname, '../public/index.html'));
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
     } else {
-        res.sendFile(path.join(__dirname, '../public/login.html'));
+        res.sendFile(path.join(__dirname, 'public', 'login.html'));
     }
 });
 
 app.get('/home.html', ensureAuthenticated, (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/home.html'));
+    res.sendFile(path.join(__dirname, 'public', 'home.html'));
 });
 
 // 404 處理
 app.get('*', (req, res) => {
-    res.status(404).sendFile(path.join(__dirname, '../public/404.html'));
+    res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
 });
 
 // MongoDB 連線
