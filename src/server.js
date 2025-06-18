@@ -5,6 +5,7 @@ const passport = require('passport');
 const path = require('path');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const fs = require('fs');
 require('dotenv').config();
 require('./models/user');
 require('./models/battle');
@@ -35,7 +36,16 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // 靜態檔案
-app.use(express.static(path.join(__dirname, '../public')));
+const publicPath = path.join(__dirname, 'public');
+app.use(express.static(publicPath));
+
+// 診斷 public 目錄內容
+try {
+    const publicFiles = fs.readdirSync(publicPath);
+    console.log('Public directory contents:', publicFiles);
+} catch (err) {
+    console.error('Error reading public directory:', err.message);
+}
 
 // 保護路由
 const ensureAuthenticated = (req, res, next) => {
@@ -53,27 +63,46 @@ app.use('/api', require('./routes/api'));
 
 // 頁面路由
 app.get(['/', '/index.html'], (req, res) => {
-    if (req.isAuthenticated()) {
-        res.sendFile(path.join(__dirname, '../public/index.html'));
-    } else {
-        res.sendFile(path.join(__dirname, '../public/login.html'));
-    }
+    const fileName = req.isAuthenticated() ? 'index.html' : 'login.html';
+    const filePath = path.join(publicPath, fileName);
+    console.log(`Serving ${fileName} at ${filePath}`);
+    res.sendFile(filePath, (err) => {
+        if (err) {
+            console.error(`Error serving ${fileName}:`, err.message);
+            res.status(404).send('Page not found');
+        }
+    });
 });
 
 app.get('/home.html', ensureAuthenticated, (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/home.html'));
+    const filePath = path.join(publicPath, 'home.html');
+    console.log(`Serving home.html at ${filePath}`);
+    res.sendFile(filePath, (err) => {
+        if (err) {
+            console.error('Error serving home.html:', err.message);
+            res.status(404).send('Page not found');
+        }
+    });
 });
 
 // 404 處理
 app.get('*', (req, res) => {
-    res.status(404).sendFile(path.join(__dirname, '../public/404.html'));
+    const filePath = path.join(publicPath, '404.html');
+    console.log(`Serving 404.html at ${filePath}`);
+    res.status(404).sendFile(filePath, (err) => {
+        if (err) {
+            console.error('Error serving 404.html:', err.message);
+            res.status(404).send('Page not found');
+        }
+    });
 });
 
 // MongoDB 連線
-mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.error('MongoDB connection error:', err));
 
+// 啟動伺服器
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
