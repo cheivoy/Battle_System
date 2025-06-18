@@ -4,24 +4,12 @@ const router = express.Router();
 
 router.get('/discord', passport.authenticate('discord'));
 
-router.get('/discord/callback', passport.authenticate('discord', { failureRedirect: '/login.html' }), async (req, res) => {
+router.get('/discord/callback', passport.authenticate('discord', { failureRedirect: '/login.html?error=auth_failed' }), async (req, res) => {
     try {
         console.log('Callback received for user:', req.user?.discordId);
         if (!req.user) {
             console.error('No user in session after callback');
             return res.redirect('/login.html?error=no_user');
-        }
-
-        // 驗證成員 ID
-        const allowedIds = process.env.ALLOWED_MEMBER_IDS?.split(',') || [];
-        const isAllowed = allowedIds.includes(req.user.discordId) || req.user.discordId === process.env.MASTER_ADMIN_ID;
-        if (!isAllowed) {
-            console.log(`Unauthorized user: ${req.user.discordId}`);
-            req.logout((err) => {
-                if (err) console.error('Logout error:', err);
-                res.redirect('/login.html?error=invalid_member');
-            });
-            return;
         }
 
         // 確保 session 保存
@@ -31,7 +19,7 @@ router.get('/discord/callback', passport.authenticate('discord', { failureRedire
                 return res.redirect('/login.html?error=session_error');
             }
             console.log(`Session saved for user: ${req.user.discordId}`);
-            res.redirect('/index.html');
+            res.redirect('/home.html');
         });
     } catch (err) {
         console.error('Callback error:', err);
