@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>成員管理</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="bg-gray-100 flex">
+    <aside id="sidebar" class="bg-gray-800 text-white w-64 min-h-screen p-4 fixed transform -translate-x-full md:translate-x-0 transition-transform">
+        <h2 class="text-xl font-bold mb-4">導航</h2>
+        <ul>
+            <li><a href="/home.html" class="block py-2 px-4 hover:bg-gray-700 rounded">首頁</a></li>
+            <li><a href="/admin/battle_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">幫戰管理</a></li>
+            <li><a href="/admin/registered_members.html" class="block py-2 px-4 hover:bg-gray-700 rounded">報名名單</a></li>
+            <li><a href="/admin/member_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">成員管理</a></li>
+            <li><a href="/admin/formation_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">陣型管理</a></li>
+            <li><a href="/admin/statistics.html" class="block py-2 px-4 hover:bg-gray-700 rounded">統計資料</a></li>
+            <li><a href="/admin/change_logs.html" class="block py-2 px-4 hover:bg-gray-700 rounded">變更日誌</a></li>
+            <li><a href="/applications/job_change.html" class="block py-2 px-4 hover:bg-gray-700 rounded">職業變更</a></li>
+            <li><a href="/applications/id_change.html" class="block py-2 px-4 hover:bg-gray-700 rounded">ID 變更</a></li>
+            <li><a href="/applications/leave.html" class="block py-2 px-4 hover:bg-gray-700 rounded">請假申請</a></li>
+            <li><a href="/applications/proxy_registration.html" class="block py-2 px-4 hover:bg-gray-700 rounded">代理報名</a></li>
+            <li><a href="/records/attendance.html" class="block py-2 px-4 hover:bg-gray-700 rounded">出勤紀錄</a></li>
+            <li><a href="/auth/logout" class="block py-2 px-4 hover:bg-red-700 rounded text-red-300">登出</a></li>
+        </ul>
+    </aside>
+    <main class="flex-1 p-4 md:ml-64">
+        <button id="hamburger" class="md:hidden text-gray-800 text-2xl mb-4">☰</button>
+        <div class="container mx-auto">
+            <h1 class="text-2xl font-bold mb-4">🛡️ 成員管理</h1>
+            <div class="bg-white p-4 rounded-lg shadow-lg mb-4">
+                <h2 class="text-lg font-bold mb-2">白名單管理</h2>
+                <form id="whitelistForm" class="mb-4">
+                    <div class="mb-2">
+                        <label class="block text-gray-700">添加單個遊戲 ID：</label>
+                        <input type="text" id="gameId" class="border rounded w-full p-2" placeholder="輸入遊戲 ID">
+                    </div>
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">添加</button>
+                </form>
+                <form id="bulkWhitelistForm" class="mb-4">
+                    <div class="mb-2">
+                        <label class="block text-gray-700">批量導入遊戲 ID（CSV 檔案）：</label>
+                        <input type="file" id="csvFile" accept=".csv" class="border rounded w-full p-2">
+                        <p class="text-sm text-gray-500">CSV 格式：單列，標頭為 "gameId"，每行一個遊戲 ID（1-7 個中文字符）</p>
+                    </div>
+                    <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">批量導入</button>
+                </form>
+                <div id="whitelist" class="overflow-x-auto"></div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-lg mb-4">
+                <h2 class="text-lg font-bold mb-2">成員列表</h2>
+                <div id="memberList" class="overflow-x-auto"></div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-lg">
+                <h2 class="text-lg font-bold mb-2">待審核申請</h2>
+                <div id="pendingRequests" class="overflow-x-auto"></div>
+            </div>
+        </div>
+    </main>
+    <div id="notification" class="fixed top-4 right-4 hidden p-4 rounded shadow-lg"></div>
+    <div id="loading" class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center hidden">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+    </div>
+    <script src="/scripts.js"></script>
+    <script>
+        async function checkAdmin() {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/user/status', { credentials: 'include' });
+                const data = await res.json();
+                if (!data.success || !data.user.isAdmin) {
+                    window.location.href = '/home.html';
+                }
+            } catch (err) {
+                showNotification('無法驗證身份', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadMembers() {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/users', { credentials: 'include' });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('memberList').innerHTML = `
+                        <table class="table-auto w-full">
+                            <thead>
+                                <tr><th>Discord ID</th><th>用戶名</th><th>遊戲 ID</th><th>職業</th><th>管理員</th><th>操作</th></tr>
+                            </thead>
+                            <tbody>
+                                ${data.users.map(user => `
+                                    <tr>
+                                        <td>${user.discordId}</td>
+                                        <td>${user.username}</td>
+                                        <td>${user.gameId || '未設置'}</td>
+                                        <td>${user.job || '未設置'}</td>
+                                        <td><input type="checkbox" ${user.isAdmin ? 'checked' : ''} onchange="toggleAdmin('${user._id}', this.checked)" ${user.discordId === '${process.env.MASTER_ADMIN_ID}' ? 'disabled' : ''}></td>
+                                        <td><button onclick="deleteUser('${user._id}')" class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">刪除</button></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            } catch (err) {
+                showNotification('無法載入成員列表', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadWhitelist() {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/whitelist', { credentials: 'include' });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('whitelist').innerHTML = `
+                        <table class="table-auto w-full">
+                            <thead>
+                                <tr><th>遊戲 ID</th><th>操作</th></tr>
+                            </thead>
+                            <tbody>
+                                ${data.whitelist.map(entry => `
+                                    <tr>
+                                        <td>${entry.gameId}</td>
+                                        <td><button onclick="deleteWhitelist('${entry.gameId}')" class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">刪除</button></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            } catch (err) {
+                showNotification('無法載入白名單', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadPendingRequests() {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/pending-requests', { credentials: 'include' });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('pendingRequests').innerHTML = `
+                        <table class="table-auto w-full">
+                            <thead>
+                                <tr><th>申請類型</th><th>用戶</th><th>申請內容</th><th>操作</th></tr>
+                            </thead>
+                            <tbody>
+                                ${data.requests.map(req => `
+                                    <tr>
+                                        <td>${req.type === 'job_change' ? '職業變更' : 'ID 變更'}</td>
+                                        <td>${req.userId.gameId} (${req.userId.discordId})</td>
+                                        <td>${req.type === 'job_change' ? `新職業: ${req.data.newJob}` : `新 ID: ${req.data.newGameId}`}</td>
+                                        <td>
+                                            <button onclick="reviewRequest('${req._id}', 'approve')" class="bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600">批准</button>
+                                            <button onclick="reviewRequest('${req._id}', 'reject')" class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">拒絕</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            } catch (err) {
+                showNotification('無法載入待審核申請', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        document.getElementById('whitelistForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const gameId = document.getElementById('gameId').value.trim();
+            if (!gameId) {
+                showNotification('請輸入遊戲 ID', 'error');
+                return;
+            }
+            showLoading(true);
+            try {
+                const res = await fetch('/api/whitelist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ gameId })
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) {
+                    loadWhitelist();
+                    document.getElementById('gameId').value = '';
+                }
+            } catch (err) {
+                showNotification('添加失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        document.getElementById('bulkWhitelistForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const csvFile = document.getElementById('csvFile').files[0];
+            if (!csvFile) {
+                showNotification('請選擇 CSV 檔案', 'error');
+                return;
+            }
+            showLoading(true);
+            try {
+                const formData = new FormData();
+                formData.append('csvFile', csvFile);
+                const res = await fetch('/api/whitelist/bulk', {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: formData
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) {
+                    if (data.results.length > 0) {
+                        data.results.forEach(msg => showNotification(msg, 'success'));
+                    }
+                    if (data.errors.length > 0) {
+                        data.errors.forEach(msg => showNotification(msg, 'error'));
+                    }
+                    loadWhitelist();
+                    document.getElementById('csvFile').value = '';
+                }
+            } catch (err) {
+                showNotification('批量導入失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        async function deleteWhitelist(gameId) {
+            if (!confirm('確定要刪除此遊戲 ID？')) return;
+            showLoading(true);
+            try {
+                const res = await fetch(`/api/whitelist/${gameId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) loadWhitelist();
+            } catch (err) {
+                showNotification('刪除失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function toggleAdmin(userId, isAdmin) {
+            showLoading(true);
+            try {
+                const res = await fetch(`/api/users/${userId}/admin`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ isAdmin })
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) loadMembers();
+            } catch (err) {
+                showNotification('更新失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function deleteUser(userId) {
+            if (!confirm('確定要刪除此用戶？')) return;
+            showLoading(true);
+            try {
+                const res = await fetch(`/api/users/${userId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) loadMembers();
+            } catch (err) {
+                showNotification('刪除失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function reviewRequest(requestId, action) {
+            if (!confirm(`確定要${action === 'approve' ? '批准' : '拒絕'}此申請？`)) return;
+            showLoading(true);
+            try {
+                const res = await fetch(`/api/pending-requests/${requestId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ action })
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) {
+                    loadPendingRequests();
+                    loadMembers();
+                }
+            } catch (err) {
+                showNotification('審核失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        document.getElementById('hamburger').addEventListener('click', () => {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('-translate-x-full');
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAdmin();
+            loadMembers();
+            loadWhitelist();
+            loadPendingRequests();
+        });
+    </script>
+</body>
+</html>

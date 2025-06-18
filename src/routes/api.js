@@ -7,51 +7,326 @@ const LeaveRequest = require('../models/leaveRequest');
 const AttendanceRecord = require('../models/attendanceRecord');
 const ChangeLog = require('../models/changeLog');
 const moment = require('moment');
+const Whitelist = require('../models/whitelist');
+const PendingRequest = require('../models/pendingRequest');
+const axios = require('axios');
+const multer = require('multer');
+const csvParser = require('csv-parser');
+const stream = require('stream');
 
-// 確保管理員
+
+// 定義 ensureAdmin 中間件（若原代碼未定義）
 const ensureAdmin = (req, res, next) => {
-    if (req.user.isAdmin) {
-        return next();
+    if (!req.isAuthenticated() || !req.user.isAdmin) {
+        return res.status(403).json({ success: false, message: '無管理員權限' });
     }
-    res.status(403).json({ success: false, message: '無管理員權限' });
+    next();
 };
 
-// 用戶狀態
-router.get('/user/status', (req, res) => {
+// 發送 Discord Webhook 通知
+async function sendWebhookNotification(message) {
+    const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+    if (!webhookUrl) {
+        console.error('未設置 DISCORD_WEBHOOK_URL');
+        return;
+    }
+    try {
+        await axios.post(webhookUrl, {
+            content: message
+        });
+    } catch (err) {
+        console.error('Webhook 通知發送失敗:', err.message);
+    }
+}
+
+// 獲取當前用戶資訊
+router.get('/user/status', async (req, res) => {
     if (!req.isAuthenticated()) {
         return res.json({ success: false, message: '未登入' });
     }
-    res.json({
-        success: true,
-        user: {
-            discordId: req.user.discordId,
-            gameId: req.user.gameId,
-            job: req.user.job,
-            isAdmin: req.user.isAdmin,
-            onLeave: req.user.onLeave
-        }
-    });
+    try {
+        const user = await User.findById(req.user.id);
+        res.json({
+            success: true,
+            user: {
+                discordId: user.discordId,
+                username: user.username,
+                gameId: user.gameId,
+                job: user.job,
+                isAdmin: user.isAdmin,
+                isWhitelisted: user.isWhitelisted
+            }
+        });
+    } catch (err) {
+        res.json({ success: false, message: '無法獲取用戶資訊' });
+    }
 });
 
-// 用戶設定
+// 設置遊戲 ID 和職業
 router.post('/user/setup', async (req, res) => {
+    if (!req.isAuthenticated()) {
+        return res.json({ success: false, message: '未登入' });
+    }
+    const { gameId, job } = req.body;
+    if (!gameId || !job) {
+        return res.json({ success: false, message: '請提供遊戲 ID 和職業' });
+    }
     try {
-        const { gameId, job } = req.body;
-        if (!gameId || !job || !/^[\u4e00-\u9fa5]{1,7}$/.test(gameId)) {
-            return res.status(400).json({ success: false, message: '遊戲 ID 需為 1-7 個中文字符，且職業必填' });
+        // 檢查白名單
+        const whitelistEntry = await Whitelist.findOne({ gameId });
+        if (!whitelistEntry) {
+            return res.json({ success: false, message: '遊戲 ID 不在白名單中' });
         }
-        const user = await User.findOne({ discordId: req.user.discordId });
+        const user = await User.findById(req.user.id);
         user.gameId = gameId;
         user.job = job;
+        user.isWhitelisted = true;
         await user.save();
-        await new ChangeLog({
-            userId: req.user.discordId,
+        await ChangeLog.create({
+            userId: user.discordId,
             type: 'setup',
-            message: `用戶 ${gameId} 設定遊戲 ID 和職業 ${job}`
-        }).save();
-        res.json({ success: true, message: '設定完成' });
+            message: `用戶設置遊戲 ID: ${gameId}, 職業: ${job}`
+        });
+        res.json({ success: true, message: '設置成功' });
     } catch (err) {
-        res.status(500).json({ success: false, message: '伺服器錯誤' });
+        res.json({ success: false, message: '設置失敗' });
+    }
+});
+
+// 白名單管理（管理員專用）
+router.get('/whitelist', ensureAdmin, async (req, res) => {
+    try {
+        const whitelist = await Whitelist.find();
+        res.json({ success: true, whitelist });
+    } catch (err) {
+        res.json({ success: false, message: '無法獲取白名單' });
+    }
+});
+
+router.post('/whitelist', ensureAdmin, async (req, res) => {
+    const { gameId } = req.body;
+    if (!gameId) {
+        return res.json({ success: false, message: '請提供遊戲 ID' });
+    }
+    try {
+        const existing = await Whitelist.findOne({ gameId });
+        if (existing) {
+            return res.json({ success: false, message: '遊戲 ID 已存在' });
+        }
+        await Whitelist.create({ gameId });
+        await ChangeLog.create({
+            userId: req.user.discordId,
+            type: 'whitelist_add',
+            message: `添加白名單遊戲 ID: ${gameId}`
+        });
+        res.json({ success: true, message: '添加成功' });
+    } catch (err) {
+        res.json({ success: false, message: '添加失敗' });
+    }
+});
+
+router.delete('/whitelist/:gameId', ensureAdmin, async (req, res) => {
+    try {
+        const { gameId } = req.params;
+        const whitelistEntry = await Whitelist.findOneAndDelete({ gameId });
+        if (!whitelistEntry) {
+            return res.json({ success: false, message: '遊戲 ID 不存在' });
+        }
+        await ChangeLog.create({
+            userId: req.user.discordId,
+            type: 'whitelist_remove',
+            message: `移除白名單遊戲 ID: ${gameId}`
+        });
+        res.json({ success: true, message: '移除成功' });
+    } catch (err) {
+        res.json({ success: false, message: '移除失敗' });
+    }
+});
+
+// 批量導入白名單
+router.post('/whitelist/bulk', ensureAdmin, upload.single('csvFile'), async (req, res) => {
+    if (!req.file) {
+        return res.json({ success: false, message: '請上傳 CSV 檔案' });
+    }
+    try {
+        const results = [];
+        const errors = [];
+        const gameIds = [];
+
+        // 解析 CSV
+        const bufferStream = new stream.PassThrough();
+        bufferStream.end(req.file.buffer);
+        bufferStream
+            .pipe(csvParser({ headers: ['gameId'], skipLines: 0 }))
+            .on('data', (row) => {
+                const gameId = row.gameId?.trim();
+                if (gameId && /^[\u4e00-\u9fa5]{1,7}$/.test(gameId)) {
+                    gameIds.push(gameId);
+                } else {
+                    errors.push(`無效遊戲 ID: ${gameId || '空值'}`);
+                }
+            })
+            .on('end', async () => {
+                // 檢查重複 ID
+                const existingIds = await Whitelist.find({ gameId: { $in: gameIds } }).distinct('gameId');
+                const newIds = gameIds.filter(id => !existingIds.includes(id));
+
+                // 批量插入
+                if (newIds.length > 0) {
+                    const bulkOps = newIds.map(id => ({
+                        insertOne: { document: { gameId: id } }
+                    }));
+                    await Whitelist.bulkWrite(bulkOps);
+                    results.push(`成功添加 ${newIds.length} 個遊戲 ID`);
+                    // 記錄日誌
+                    await ChangeLog.insertMany(newIds.map(id => ({
+                        userId: req.user.discordId,
+                        type: 'whitelist_add',
+                        message: `批量添加白名單遊戲 ID: ${id}`
+                    })));
+                    // 發送 Webhook 通知
+                    await sendWebhookNotification(`批量導入白名單：成功添加 ${newIds.length} 個遊戲 ID`);
+                }
+
+                if (existingIds.length > 0) {
+                    errors.push(`以下 ${existingIds.length} 個遊戲 ID 已存在: ${existingIds.join(', ')}`);
+                }
+
+                res.json({
+                    success: true,
+                    message: '批量導入完成',
+                    results,
+                    errors
+                });
+            })
+            .on('error', (err) => {
+                res.json({ success: false, message: `CSV 解析錯誤: ${err.message}` });
+            });
+    } catch (err) {
+        res.json({ success: false, message: `處理失敗: ${err.message}` });
+    }
+});
+
+
+
+// 職業變更申請
+router.post('/job/change', async (req, res) => {
+    if (!req.isAuthenticated()) {
+        return res.json({ success: false, message: '未登入' });
+    }
+    const { newJob } = req.body;
+    if (!newJob) {
+        return res.json({ success: false, message: '請選擇新職業' });
+    }
+    try {
+        const request = await PendingRequest.create({
+            userId: req.user.id,
+            type: 'job_change',
+            data: { newJob }
+        });
+        await ChangeLog.create({
+            userId: req.user.discordId,
+            type: 'job_change_request',
+            message: `申請變更職業為: ${newJob}`
+        });
+        await sendWebhookNotification(`新職業變更申請：用戶 ${req.user.discordId} 申請將職業變更為 ${newJob}`);
+        res.json({ success: true, message: '申請已提交，待管理員審核' });
+    } catch (err) {
+        res.json({ success: false, message: '申請失敗' });
+    }
+});
+
+// ID 變更申請
+router.post('/id/change', async (req, res) => {
+    if (!req.isAuthenticated()) {
+        return res.json({ success: false, message: '未登入' });
+    }
+    const { newGameId } = req.body;
+    if (!newGameId || !/^[\u4e00-\u9fa5]{1,7}$/.test(newGameId)) {
+        return res.json({ success: false, message: '遊戲 ID 需為 1-7 個中文字符' });
+    }
+    try {
+        const request = await PendingRequest.create({
+            userId: req.user.id,
+            type: 'id_change',
+            data: { newGameId }
+        });
+        await ChangeLog.create({
+            userId: req.user.discordId,
+            type: 'id_change_request',
+            message: `申請變更遊戲 ID 為: ${newGameId}`
+        });
+        await sendWebhookNotification(`新 ID 變更申請：用戶 ${req.user.discordId} 申請將遊戲 ID 變更為 ${newGameId}`);
+        res.json({ success: true, message: '申請已提交，待管理員審核' });
+    } catch (err) {
+        res.json({ success: false, message: '申請失敗' });
+    }
+});
+
+// 獲取待審核申請（管理員專用）
+router.get('/pending-requests', ensureAdmin, async (req, res) => {
+    try {
+        const requests = await PendingRequest.find({ status: 'pending' })
+            .populate('userId', 'discordId username gameId job');
+        res.json({ success: true, requests });
+    } catch (err) {
+        res.json({ success: false, message: '無法獲取待審核申請' });
+    }
+});
+
+// 審核申請（管理員專用）
+router.post('/pending-requests/:requestId', ensureAdmin, async (req, res) => {
+    const { action } = req.body; // 'approve' or 'reject'
+    if (!['approve', 'reject'].includes(action)) {
+        return res.json({ success: false, message: '無效的操作' });
+    }
+    try {
+        const request = await PendingRequest.findById(req.params.requestId)
+            .populate('userId');
+        if (!request) {
+            return res.json({ success: false, message: '申請不存在' });
+        }
+        request.status = action === 'approve' ? 'approved' : 'rejected';
+        request.reviewedBy = req.user.id;
+        request.reviewedAt = new Date();
+        await request.save();
+        if (action === 'approve') {
+            const user = await User.findById(request.userId);
+            if (request.type === 'job_change') {
+                user.job = request.data.newJob;
+                await user.save();
+                await ChangeLog.create({
+                    userId: user.discordId,
+                    type: 'job_change_approved',
+                    message: `職業變更已批准，新職業: ${request.data.newJob}`
+                });
+            } else if (request.type === 'id_change') {
+                const oldGameId = user.gameId;
+                user.gameId = request.data.newGameId;
+                await user.save();
+                // 更新白名單
+                await Whitelist.findOneAndUpdate(
+                    { gameId: oldGameId },
+                    { gameId: request.data.newGameId },
+                    { upsert: true }
+                );
+                await ChangeLog.create({
+                    userId: user.discordId,
+                    type: 'id_change_approved',
+                    message: `遊戲 ID 變更已批准，新 ID: ${request.data.newGameId}`
+                });
+            }
+        } else {
+            await ChangeLog.create({
+                userId: request.userId.discordId,
+                type: `${request.type}_${action}`,
+                message: `${request.type === 'job_change' ? '職業' : 'ID'} 變更申請被拒絕`
+            });
+        }
+        await sendWebhookNotification(`申請審核結果：用戶 ${request.userId.discordId} 的${request.type === 'job_change' ? '職業' : 'ID'} 變更申請已被${action === 'approve' ? '批准' : '拒絕'}`);
+        res.json({ success: true, message: '審核完成' });
+    } catch (err) {
+        res.json({ success: false, message: '審核失敗' });
     }
 });
 
