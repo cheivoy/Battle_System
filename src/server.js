@@ -7,6 +7,8 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const fs = require('fs');
 require('dotenv').config();
+
+// 載入模型與 Passport 設定
 require('./models/user');
 require('./models/battle');
 require('./models/registration');
@@ -30,16 +32,19 @@ app.use(session({
         collectionName: 'sessions',
         ttl: 24 * 60 * 60
     }),
-    cookie: { secure: process.env.NODE_ENV === 'production', maxAge: 24 * 60 * 60 * 1000 }
+    cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000
+    }
 }));
 app.use(passport.initialize());
 app.use(passport.session());
 
-// 靜態檔案
+// 靜態檔案目錄
 const publicPath = path.join(__dirname, 'public');
 app.use(express.static(publicPath));
 
-// 診斷 public 目錄內容
+// 顯示 public 目錄內容（debug）
 try {
     const publicFiles = fs.readdirSync(publicPath);
     console.log('Public directory contents:', publicFiles);
@@ -47,13 +52,13 @@ try {
     console.error('Error reading public directory:', err.message);
 }
 
-// 保護路由
+// 登入驗證中介
 const ensureAuthenticated = (req, res, next) => {
     if (req.isAuthenticated()) {
-        console.log(`Authenticated user: ${req.user.discordId}`);
+        console.log(`✅ Authenticated user: ${req.user.discordId}`);
         return next();
     }
-    console.log('Unauthenticated access attempt');
+    console.log('❌ Unauthenticated access attempt');
     res.redirect('/login.html?error=unauthenticated');
 };
 
@@ -61,43 +66,22 @@ const ensureAuthenticated = (req, res, next) => {
 app.use('/auth', require('./routes/auth'));
 app.use('/api', require('./routes/api'));
 
-
+// ✅ 首頁根據登入狀態導向
 app.get('/', (req, res) => {
-    res.redirect('/login.html'); // 首頁重定向到 login.html
-});
-app.get('*', (req, res) => {
-    const filePath = path.join(__dirname, 'public', req.path.endsWith('.html') ? req.path : `${req.path}.html`);
-    console.log(`Attempting to serve file: ${filePath}`); // 診斷請求路徑
-    res.sendFile(filePath, (err) => {
-        if (err) {
-            console.error(`Error serving file ${filePath}:`, err.message);
-            res.sendFile(path.join(__dirname, 'public', '404.html'), (err404) => {
-                if (err404) {
-                    console.error('Error serving 404.html:', err404.message);
-                    res.status(404).send('Page not found');
-                }
-            });
-        }
-    });
+    if (req.isAuthenticated && req.isAuthenticated()) {
+        console.log('✅ User logged in, redirecting to index.html');
+        res.redirect('/index.html');
+    } else {
+        console.log('❌ User not logged in, redirecting to login.html');
+        res.redirect('/login.html');
+    }
 });
 
-// 頁面路由
-app.get(['/', '/index.html'], (req, res) => {
-    const fileName = req.isAuthenticated() ? 'index.html' : 'login.html';
-    const filePath = path.join(publicPath, fileName);
-    console.log(`Serving ${fileName} at ${filePath}`);
-    res.sendFile(filePath, (err) => {
-        if (err) {
-            console.error(`Error serving ${fileName}:`, err.message);
-            res.status(404).send('Page not found');
-        }
-    });
-});
-
+// ✅ 保護頁面（例如 home）
 app.get('/home.html', ensureAuthenticated, (req, res) => {
     const filePath = path.join(publicPath, 'home.html');
     console.log(`Serving home.html at ${filePath}`);
-    res.sendFile(filePath, (err) => {
+    res.sendFile(filePath, err => {
         if (err) {
             console.error('Error serving home.html:', err.message);
             res.status(404).send('Page not found');
@@ -105,11 +89,11 @@ app.get('/home.html', ensureAuthenticated, (req, res) => {
     });
 });
 
-// 404 處理
+// ✅ 404 fallback route
 app.get('*', (req, res) => {
     const filePath = path.join(publicPath, '404.html');
     console.log(`Serving 404.html at ${filePath}`);
-    res.status(404).sendFile(filePath, (err) => {
+    res.status(404).sendFile(filePath, err => {
         if (err) {
             console.error('Error serving 404.html:', err.message);
             res.status(404).send('Page not found');
@@ -117,13 +101,13 @@ app.get('*', (req, res) => {
     });
 });
 
-// MongoDB 連線
+// ✅ MongoDB 連線
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('MongoDB connected'))
-    .catch(err => console.error('MongoDB connection error:', err));
+    .then(() => console.log('✅ MongoDB connected'))
+    .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// 啟動伺服器
+// ✅ 啟動伺服器
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
 });
