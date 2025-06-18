@@ -19,7 +19,13 @@ router.get('/discord/callback', passport.authenticate('discord', { failureRedire
                 return res.redirect('/login.html?error=session_error');
             }
             console.log(`Session saved for user: ${req.user.discordId}`);
-            res.redirect('/home.html');
+            
+            // 檢查用戶是否已完成初始設定
+            if (req.user.gameId && req.user.job) {
+                res.redirect('/home.html');  // 已設定完成，跳轉到主頁
+            } else {
+                res.redirect('/index.html'); // 未設定完成，跳轉到設定頁面
+            }
         });
     } catch (err) {
         console.error('Callback error:', err);
