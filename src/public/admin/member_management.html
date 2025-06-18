@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>成員管理</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body class="bg-gray-100 flex">
+    <aside id="sidebar"
+        class="bg-gray-800 text-white w-64 min-h-screen p-4 fixed transform -translate-x-full md:translate-x-0 transition-transform">
+        <h2 class="text-xl font-bold mb-4">導航</h2>
+        <ul>
+            <li><a href="/home.html" class="block py-2 px-4 hover:bg-gray-700 rounded">首頁</a></li>
+            <li><a href="/admin/battle_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">幫戰管理</a></li>
+            <li><a href="/admin/registered_members.html" class="block py-2 px-4 hover:bg-gray-700 rounded">報名名單</a></li>
+            <li><a href="/admin/member_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">成員管理</a></li>
+            <li><a href="/admin/formation_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">陣型管理</a>
+            </li>
+            <li><a href="/admin/statistics.html" class="block py-2 px-4 hover:bg-gray-700 rounded">統計資料</a></li>
+            <li><a href="/admin/change_logs.html" class="block py-2 px-4 hover:bg-gray-700 rounded">變更日誌</a></li>
+            <li><a href="/applications/job_change.html" class="block py-2 px-4 hover:bg-gray-700 rounded">職業變更</a></li>
+            <li><a href="/applications/id_change.html" class="block py-2 px-4 hover:bg-gray-700 rounded">ID 變更</a></li>
+            <li><a href="/applications/leave.html" class="block py-2 px-4 hover:bg-gray-700 rounded">請假申請</a></li>
+            <li><a href="/applications/proxy_registration.html"
+                    class="block py-2 px-4 hover:bg-gray-700 rounded">代理報名</a></li>
+            <li><a href="/records/attendance.html" class="block py-2 px-4 hover:bg-gray-700 rounded">出勤紀錄</a></li>
+            <li><a href="/auth/logout" class="block py-2 px-4 hover:bg-red-700 rounded text-red-300">登出</a></li>
+        </ul>
+    </aside>
+    <main class="flex-1 p-4 md:ml-64">
+        <button id="hamburger" class="md:hidden text-gray-800 text-2xl mb-4">☰</button>
+        <div class="container mx-auto">
+            <h1 class="text-2xl font-bold mb-4">🛡️ 成員管理</h1>
+            <div class="mb-4">
+                <label class="block text-gray-700">篩選職業：</label>
+                <select id="jobFilter" class="border rounded w-full p-2">
+                    <option value="">所有職業</option>
+                    <option value="">請選擇新職業</option>
+                    <option value="鐵衣">鐵衣</option>
+                    <option value="素問">素問</option>
+                    <option value="九靈">九靈</option>
+                    <option value="神相">神相</option>
+                    <option value="血河">血河</option>
+                    <option value="碎夢">碎夢</option>
+                    <option value="龍吟">龍吟</option>
+                </select>
+            </div>
+            <div id="memberList" class="bg-white p-4 rounded-lg shadow-lg overflow-x-auto"></div>
+        </div>
+    </main>
+    <div id="notification" class="fixed top-4 right-4 hidden p-4 rounded shadow-lg"></div>
+    <div id="loading" class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center hidden">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+    </div>
+    <script src="/scripts.js"></script>
+    <script>
+        async function checkAdmin() {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/user/status', { credentials: 'include' });
+                const data = await res.json();
+                if (!data.success || !data.user.isAdmin) {
+                    window.location.href = '/home.html';
+                }
+            } catch (err) {
+                showNotification('無法驗證身份', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadMembers() {
+            showLoading(true);
+            try {
+                const job = document.getElementById('jobFilter').value;
+                const res = await fetch(`/api/users${job ? `?job=${job}` : ''}`, { credentials: 'include' });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('memberList').innerHTML = `
+                        <table class="table-auto w-full">
+                            <thead>
+                                <tr><th>遊戲 ID</th><th>職業</th><th>管理員</th><th>請假</th><th>操作</th></tr>
+                            </thead>
+                            <tbody>
+                                ${data.users.map(user => `
+                                    <tr>
+                                        <td>${user.gameId || '未設定'}</td>
+                                        <td>${user.job || '未設定'}</td>
+                                        <td>
+                                            <input type="checkbox" ${user.isAdmin ? 'checked' : ''} onchange="updateMember('${user._id}', this.checked, ${user.onLeave})">
+                                        </td>
+                                        <td>
+                                            <input type="checkbox" ${user.onLeave ? 'checked' : ''} onchange="updateMember('${user._id}', ${user.isAdmin}, this.checked)">
+                                        </td>
+                                        <td>
+                                            <button onclick="deleteMember('${user._id}')" class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">刪除</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            } catch (err) {
+                showNotification('無法載入成員列表', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function updateMember(userId, isAdmin, onLeave) {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/user/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ userId, isAdmin, onLeave })
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) loadMembers();
+            } catch (err) {
+                showNotification('更新失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function deleteMember(userId) {
+            if (!confirm('確定要刪除此成員？')) return;
+            showLoading(true);
+            try {
+                const res = await fetch(`/api/user/${userId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) loadMembers();
+            } catch (err) {
+                showNotification('刪除失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        document.getElementById('jobFilter').addEventListener('change', loadMembers);
+        document.getElementById('hamburger').addEventListener('click', () => {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('-translate-x-full');
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAdmin();
+            loadMembers();
+        });
+    </script>
+</body>
+
+</html>

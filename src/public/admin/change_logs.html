@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>變更日誌</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="bg-gray-100 flex">
+    <aside id="sidebar" class="bg-gray-800 text-white w-64 min-h-screen p-4 fixed transform -translate-x-full md:translate-x-0 transition-transform">
+        <h2 class="text-xl font-bold mb-4">導航</h2>
+        <ul>
+            <li><a href="/home.html" class="block py-2 px-4 hover:bg-gray-700 rounded">首頁</a></li>
+            <li><a href="/admin/battle_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">幫戰管理</a></li>
+            <li><a href="/admin/registered_members.html" class="block py-2 px-4 hover:bg-gray-700 rounded">報名名單</a></li>
+            <li><a href="/admin/member_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">成員管理</a></li>
+            <li><a href="/admin/formation_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">陣型管理</a></li>
+            <li><a href="/admin/statistics.html" class="block py-2 px-4 hover:bg-gray-700 rounded">統計資料</a></li>
+            <li><a href="/admin/change_logs.html" class="block py-2 px-4 hover:bg-gray-700 rounded">變更日誌</a></li>
+            <li><a href="/applications/job_change.html" class="block py-2 px-4 hover:bg-gray-700 rounded">職業變更</a></li>
+            <li><a href="/applications/id_change.html" class="block py-2 px-4 hover:bg-gray-700 rounded">ID 變更</a></li>
+            <li><a href="/applications/leave.html" class="block py-2 px-4 hover:bg-gray-700 rounded">請假申請</a></li>
+            <li><a href="/applications/proxy_registration.html" class="block py-2 px-4 hover:bg-gray-700 rounded">代理報名</a></li>
+            <li><a href="/records/attendance.html" class="block py-2 px-4 hover:bg-gray-700 rounded">出勤紀錄</a></li>
+            <li><a href="/auth/logout" class="block py-2 px-4 hover:bg-red-700 rounded text-red-300">登出</a></li>
+        </ul>
+    </aside>
+    <main class="flex-1 p-4 md:ml-64">
+        <button id="hamburger" class="md:hidden text-gray-800 text-2xl mb-4">☰</button>
+        <div class="container mx-auto">
+            <h1 class="text-2xl font-bold mb-4">🛡️ 變更日誌</h1>
+            <div class="bg-white p-4 rounded-lg shadow-lg mb-4">
+                <div class="mb-4">
+                    <label class="block text-gray-700">篩選日期：</label>
+                    <input type="date" id="dateFilter" class="border rounded w-full p-2">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700">篩選用戶 ID：</label>
+                    <input type="text" id="userIdFilter" class="border rounded w-full p-2" placeholder="輸入 Discord ID">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700">篩選類型：</label>
+                    <select id="typeFilter" class="border rounded w-full p-2">
+                        <option value="">所有類型</option>
+                        <option value="setup">用戶設定</option>
+                        <option value="battle_create">創建幫戰</option>
+                        <option value="register">報名</option>
+                        <option value="cancel">取消報名</option>
+                        <option value="proxy_register">代報名</option>
+                        <option value="formation_update">陣型更新</option>
+                        <option value="battle_confirm">確認出戰表</option>
+                        <option value="user_update">成員狀態更新</option>
+                        <option value="user_delete">刪除成員</option>
+                        <option value="leave_request">請假申請</option>
+                        <option value="leave_approve">請假審核</option>
+                        <option value="job_change">職業變更</option>
+                        <option value="id_change">ID 變更</option>
+                    </select>
+                </div>
+                <button id="filterBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">篩選</button>
+            </div>
+            <div id="logList" class="bg-white p-4 rounded-lg shadow-lg overflow-x-auto"></div>
+        </div>
+    </main>
+    <div id="notification" class="fixed top-4 right-4 hidden p-4 rounded shadow-lg"></div>
+    <div id="loading" class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center hidden">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+    </div>
+    <script src="/scripts.js"></script>
+    <script>
+        async function checkAdmin() {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/user/status', { credentials: 'include' });
+                const data = await res.json();
+                if (!data.success || !data.user.isAdmin) {
+                    window.location.href = '/home.html';
+                }
+            } catch (err) {
+                showNotification('無法驗證身份', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadLogs() {
+            showLoading(true);
+            try {
+                const date = document.getElementById('dateFilter').value;
+                const userId = document.getElementById('userIdFilter').value;
+                const type = document.getElementById('typeFilter').value;
+                let query = '';
+                if (date) query += `date=${date}&`;
+                if (userId) query += `userId=${userId}&`;
+                if (type) query += `type=${type}`;
+                const res = await fetch(`/api/changelogs?${query}`, { credentials: 'include' });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('logList').innerHTML = `
+                        <table class="table-auto w-full">
+                            <thead>
+                                <tr><th>時間</th><th>用戶 ID</th><th>類型</th><th>訊息</th></tr>
+                            </thead>
+                            <tbody>
+                                ${data.logs.map(log => `
+                                    <tr>
+                                        <td>${new Date(log.timestamp).toLocaleString()}</td>
+                                        <td>${log.userId}</td>
+                                        <td>${log.type}</td>
+                                        <td>${log.message}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            } catch (err) {
+                showNotification('無法載入日誌', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        document.getElementById('filterBtn').addEventListener('click', loadLogs);
+        document.getElementById('hamburger').addEventListener('click', () => {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('-translate-x-full');
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAdmin();
+            loadLogs();
+        });
+    </script>
+</body>
+</html>

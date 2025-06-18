@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>職業變更</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="bg-gray-100 flex">
+    <aside id="sidebar" class="bg-gray-800 text-white w-64 min-h-screen p-4 fixed transform -translate-x-full md:translate-x-0 transition-transform">
+        <h2 class="text-xl font-bold mb-4">導航</h2>
+        <ul>
+            <li><a href="/home.html" class="block py-2 px-4 hover:bg-gray-700 rounded">首頁</a></li>
+            <li><a href="/admin/battle_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">幫戰管理</a></li>
+            <li><a href="/admin/registered_members.html" class="block py-2 px-4 hover:bg-gray-700 rounded">報名名單</a></li>
+            <li><a href="/admin/member_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">成員管理</a></li>
+            <li><a href="/admin/formation_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">陣型管理</a></li>
+            <li><a href="/admin/statistics.html" class="block py-2 px-4 hover:bg-gray-700 rounded">統計資料</a></li>
+            <li><a href="/admin/change_logs.html" class="block py-2 px-4 hover:bg-gray-700 rounded">變更日誌</a></li>
+            <li><a href="/applications/job_change.html" class="block py-2 px-4 hover:bg-gray-700 rounded">職業變更</a></li>
+            <li><a href="/applications/id_change.html" class="block py-2 px-4 hover:bg-gray-700 rounded">ID 變更</a></li>
+            <li><a href="/applications/leave.html" class="block py-2 px-4 hover:bg-gray-700 rounded">請假申請</a></li>
+            <li><a href="/applications/proxy_registration.html" class="block py-2 px-4 hover:bg-gray-700 rounded">代理報名</a></li>
+            <li><a href="/records/attendance.html" class="block py-2 px-4 hover:bg-gray-700 rounded">出勤紀錄</a></li>
+            <li><a href="/auth/logout" class="block py-2 px-4 hover:bg-red-700 rounded text-red-300">登出</a></li>
+        </ul>
+    </aside>
+    <main class="flex-1 p-4 md:ml-64">
+        <button id="hamburger" class="md:hidden text-gray-800 text-2xl mb-4">☰</button>
+        <div class="container mx-auto">
+            <h1 class="text-2xl font-bold mb-4">🛡️ 職業變更</h1>
+            <form id="jobChangeForm" class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="mb-4">
+                    <label class="block text-gray-700">新職業：</label>
+                    <select id="newJob" class="border rounded w-full p-2">
+                        <option value="">請選擇新職業</option>
+                        <option value="鐵衣">鐵衣</option>
+                        <option value="素問">素問</option>
+                        <option value="九靈">九靈</option>
+                        <option value="神相">神相</option>
+                        <option value="血河">血河</option>
+                        <option value="碎夢">碎夢</option>
+                        <option value="龍吟">龍吟</option>
+                    </select>
+                </div>
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">提交申請</button>
+            </form>
+        </div>
+    </main>
+    <div id="notification" class="fixed top-4 right-4 hidden p-4 rounded shadow-lg"></div>
+    <div id="loading" class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center hidden">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+    </div>
+    <script src="/scripts.js"></script>
+    <script>
+        document.getElementById('jobChangeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newJob = document.getElementById('newJob').value;
+            if (!newJob) {
+                showNotification('請選擇新職業', 'error');
+                return;
+            }
+            showLoading(true);
+            try {
+                const res = await fetch('/api/job/change', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ newJob })
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+            } catch (err) {
+                showNotification('申請失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        document.getElementById('hamburger').addEventListener('click', () => {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('-translate-x-full');
+        });
+    </script>
+</body>
+</html>

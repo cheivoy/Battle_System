@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幫戰報名管理系統 - 用戶設定</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-4">
+        <h1 class="text-2xl font-bold mb-4">🛡️ 幫戰報名管理系統 - 用戶設定</h1>
+        <div id="setupForm" class="bg-white p-6 rounded-lg shadow-lg"></div>
+    </div>
+    <script src="/scripts.js"></script>
+    <script>
+        const jobs = ['鐵衣', '素問', '九靈', '神相', '血河', '碎夢', '龍吟'];
+
+        async function loadSetupForm() {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/user/status', { credentials: 'include' });
+                const data = await res.json();
+                const formDiv = document.getElementById('setupForm');
+                if (!data.success) {
+                    window.location.href = '/login.html?error=unauthenticated';
+                    return;
+                }
+                if (data.user.gameId && data.user.job) {
+                    window.location.href = '/home.html';
+                    return;
+                }
+                formDiv.innerHTML = `
+                    <div class="mb-4">
+                        <label class="block text-gray-700">遊戲 ID（1-7個中文字符）：</label>
+                        <input type="text" id="gameId" class="border rounded w-full p-2" placeholder="請輸入遊戲 ID" pattern="[\\u4e00-\\u9fa5]{1,7}">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-gray-700">職業：</label>
+                        <select id="job" class="border rounded w-full p-2">
+                            <option value="">請選擇職業</option>
+                            ${jobs.map(job => `<option value="${job}">${job}</option>`).join('')}
+                        </select>
+                    </div>
+                    <button class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" onclick="submitSetup()">提交</button>
+                `;
+            } catch (err) {
+                showNotification('無法載入設定表單', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function submitSetup() {
+            const gameId = document.getElementById('gameId').value.trim();
+            const job = document.getElementById('job').value;
+            if (!gameId || !job) {
+                showNotification('請填寫所有欄位', 'error');
+                return;
+            }
+            if (!/^[\u4e00-\u9fa5]{1,7}$/.test(gameId)) {
+                showNotification('遊戲 ID 需為 1-7 個中文字符', 'error');
+                return;
+            }
+            showLoading(true);
+            try {
+                const res = await fetch('/api/user/setup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ gameId, job })
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) {
+                    window.location.href = '/home.html';
+                }
+            } catch (err) {
+                showNotification('設定失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadSetupForm);
+    </script>
+</body>
+</html>

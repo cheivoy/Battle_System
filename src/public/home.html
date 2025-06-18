@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幫戰報名管理系統 - 主頁</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="bg-gray-100 flex">
+    <aside id="sidebar" class="bg-gray-800 text-white w-64 min-h-screen p-4 fixed transform -translate-x-full md:translate-x-0 transition-transform">
+        <h2 class="text-xl font-bold mb-4">導航</h2>
+        <ul>
+            <li><a href="/home.html" class="block py-2 px-4 hover:bg-gray-700 rounded">首頁</a></li>
+            <li><a href="/admin/battle_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">幫戰管理</a></li>
+            <li><a href="/admin/registered_members.html" class="block py-2 px-4 hover:bg-gray-700 rounded">報名名單</a></li>
+            <li><a href="/admin/member_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">成員管理</a></li>
+            <li><a href="/admin/formation_management.html" class="block py-2 px-4 hover:bg-gray-700 rounded">陣型管理</a></li>
+            <li><a href="/admin/statistics.html" class="block py-2 px-4 hover:bg-gray-700 rounded">統計資料</a></li>
+            <li><a href="/admin/change_logs.html" class="block py-2 px-4 hover:bg-gray-700 rounded">變更日誌</a></li>
+            <li><a href="/applications/job_change.html" class="block py-2 px-4 hover:bg-gray-700 rounded">職業變更</a></li>
+            <li><a href="/applications/id_change.html" class="block py-2 px-4 hover:bg-gray-700 rounded">ID 變更</a></li>
+            <li><a href="/applications/leave.html" class="block py-2 px-4 hover:bg-gray-700 rounded">請假申請</a></li>
+            <li><a href="/applications/proxy_registration.html" class="block py-2 px-4 hover:bg-gray-700 rounded">代理報名</a></li>
+            <li><a href="/records/attendance.html" class="block py-2 px-4 hover:bg-gray-700 rounded">出勤紀錄</a></li>
+            <li><a href="/auth/logout" class="block py-2 px-4 hover:bg-red-700 rounded text-red-300">登出</a></li>
+        </ul>
+    </aside>
+    <main class="flex-1 p-4 md:ml-64">
+        <button id="hamburger" class="md:hidden text-gray-800 text-2xl mb-4">☰</button>
+        <div class="container mx-auto">
+            <h1 class="text-2xl font-bold mb-4">🛡️ 幫戰報名管理系統</h1>
+            <div id="userInfo" class="mb-4"></div>
+            <div id="battleInfo" class="mb-4 bg-white p-4 rounded-lg shadow-lg"></div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button id="registerBtn" class="bg-blue-500 text-white p-4 rounded hover:bg-blue-600">報名</button>
+                <button id="cancelBtn" class="bg-yellow-500 text-white p-4 rounded hover:bg-yellow-600">取消報名</button>
+                <button id="leaveBtn" class="bg-red-500 text-white p-4 rounded hover:bg-red-600">請假</button>
+            </div>
+            <div id="formationView" class="mt-4 bg-white p-4 rounded-lg shadow-lg overflow-x-auto"></div>
+        </div>
+    </main>
+    <div id="notification" class="fixed top-4 right-4 hidden p-4 rounded shadow-lg"></div>
+    <div id="loading" class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center hidden">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+    </div>
+    <script src="/scripts.js"></script>
+    <script>
+        async function loadHome() {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/user/status', { credentials: 'include' });
+                const data = await res.json();
+                if (!data.success) {
+                    window.location.href = '/login.html?error=unauthenticated';
+                    return;
+                }
+                document.getElementById('userInfo').innerHTML = `
+                    <p>歡迎，${data.user.gameId} (${data.user.job}) ${data.user.isAdmin ? '[管理員]' : ''}</p>
+                `;
+
+                const battleRes = await fetch('/api/battle/current', { credentials: 'include' });
+                const battleData = await battleRes.json();
+                const battleInfo = document.getElementById('battleInfo');
+                if (battleData.success) {
+                    const isPastDeadline = new Date() > new Date(battleData.battle.deadline);
+                    battleInfo.innerHTML = `
+                        <h2 class="text-lg font-bold">當前幫戰</h2>
+                        <p>日期：${new Date(battleData.battle.battleDate).toLocaleString()}</p>
+                        <p>報名截止：${new Date(battleData.battle.deadline).toLocaleString()}</p>
+                        <p>狀態：${battleData.battle.status === 'pending' ? '報名中' : '已發布'}</p>
+                        ${isPastDeadline ? '<p class="text-red-500">報名已截止，如需更動請聯繫指揮</p>' : ''}
+                    `;
+                    if (battleData.battle.status === 'published') {
+                        const formationView = document.getElementById('formationView');
+                        formationView.innerHTML = `
+                            <h2 class="text-lg font-bold mb-2">出戰表</h2>
+                            <h3>分團 A</h3>
+                            <table class="table-auto w-full mb-4">
+                                <thead><tr><th>小隊</th><th>職業</th><th>玩家 ID</th></tr></thead>
+                                <tbody>
+                                    ${battleData.battle.formation.groupA.map(row => `
+                                        <tr><td>${row.squadName}</td><td>${row.job}</td><td>${row.gameId}</td></tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            <h3>分團 B</h3>
+                            <table class="table-auto w-full">
+                                <thead><tr><th>小隊</th><th>職業</th><th>玩家 ID</th></tr></thead>
+                                <tbody>
+                                    ${battleData.battle.formation.groupB.map(row => `
+                                        <tr><td>${row.squadName}</td><td>${row.job}</td><td>${row.gameId}</td></tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            <p class="mt-2 text-green-500">您被分配至分團 ${battleData.battle.formation.groupA.some(r => r.gameId === data.user.gameId) ? 'A' : 'B'}</p>
+                        `;
+                    }
+                } else {
+                    battleInfo.innerHTML = '<p>目前無進行中的幫戰</p>';
+                }
+
+                document.getElementById('registerBtn').addEventListener('click', async () => {
+                    showLoading(true);
+                    try {
+                        const res = await fetch('/api/registration/register', {
+                            method: 'POST',
+                            credentials: 'include'
+                        });
+                        const data = await res.json();
+                        showNotification(data.message, data.success ? 'success' : 'error');
+                        if (data.success) loadHome();
+                    } catch (err) {
+                        showNotification('報名失敗', 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                });
+
+                document.getElementById('cancelBtn').addEventListener('click', async () => {
+                    showLoading(true);
+                    try {
+                        const res = await fetch('/api/registration/cancel', {
+                            method: 'POST',
+                            credentials: 'include'
+                        });
+                        const data = await res.json();
+                        showNotification(data.message, data.success ? 'success' : 'error');
+                        if (data.success) loadHome();
+                    } catch (err) {
+                        showNotification('取消報名失敗', 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                });
+
+                document.getElementById('leaveBtn').addEventListener('click', () => {
+                    window.location.href = '/applications/leave.html';
+                });
+            } catch (err) {
+                showNotification('無法載入頁面', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        document.getElementById('hamburger').addEventListener('click', () => {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('-translate-x-full');
+        });
+
+        document.addEventListener('DOMContentLoaded', loadHome);
+    </script>
+</body>
+</html>

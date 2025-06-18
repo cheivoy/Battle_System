@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幫戰報名管理系統 - 登入</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+        <h1 class="text-2xl font-bold mb-4">🛡️ 幫戰報名管理系統</h1>
+        <p class="mb-4">使用您的 Discord 帳號登入以繼續</p>
+        <a href="/auth/discord" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">使用 Discord 登入</a>
+        <p id="errorMessage" class="text-red-500 mt-4"></p>
+    </div>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const error = urlParams.get('error');
+        const errorMessage = document.getElementById('errorMessage');
+        if (error) {
+            const messages = {
+                'no_user': '無法取得用戶資訊，請重試',
+                'invalid_member': '您的帳號未獲授權，請聯繫管理員',
+                'session_error': '會話錯誤，請重新登入',
+                'callback_error': '認證失敗，請重試',
+                'unauthenticated': '請先登入'
+            };
+            errorMessage.textContent = messages[error] || '未知錯誤，請重試';
+        }
+    </script>
+</body>
+</html>

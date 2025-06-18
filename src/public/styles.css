@@ -1,0 +1,17 @@
+/* 自定義樣式 */
+.notification-success {
+    background-color: #48BB78;
+    color: white;
+}
+.notification-error {
+    background-color: #F56565;
+    color: white;
+}
+table {
+    border-collapse: collapse;
+}
+th, td {
+    border: 1px solid #E2E8F0;
+    padding: 8px;
+    text-align: left;
+}
