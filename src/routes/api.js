@@ -4,19 +4,30 @@ const User = require('../models/user');
 const Battle = require('../models/battle');
 const Registration = require('../models/registration');
 const LeaveRequest = require('../models/leaveRequest');
-const AttendanceRecord = require('../models/attendanceRecord');
 const ChangeLog = require('../models/changeLog');
-const moment = require('moment');
 const Whitelist = require('../models/whitelist');
 const PendingRequest = require('../models/pendingRequest');
 const axios = require('axios');
 const multer = require('multer');
 const csvParser = require('csv-parser');
 const stream = require('stream');
+const AttendanceRecord = require('../models/attendanceRecord');
+
+// 配置 multer 用於檔案上傳
+const upload = multer({
+    limits: { fileSize: 1024 * 1024 }, // 限制檔案大小為 1MB
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'text/csv') {
+            cb(null, true);
+        } else {
+            cb(new Error('僅支援 CSV 檔案'), false);
+        }
+    }
+});
 
 
-// 定義 ensureAdmin 中間件（若原代碼未定義）
-const ensureAdmin = (req, res, next) => {
+// 檢查是否為管理員
+const isAdmin = (req, res, next) => {
     if (!req.isAuthenticated() || !req.user.isAdmin) {
         return res.status(403).json({ success: false, message: '無管理員權限' });
     }
@@ -94,7 +105,7 @@ router.post('/user/setup', async (req, res) => {
 });
 
 // 白名單管理（管理員專用）
-router.get('/whitelist', ensureAdmin, async (req, res) => {
+router.get('/whitelist', isAdmin, async (req, res) => {
     try {
         const whitelist = await Whitelist.find();
         res.json({ success: true, whitelist });
@@ -103,7 +114,7 @@ router.get('/whitelist', ensureAdmin, async (req, res) => {
     }
 });
 
-router.post('/whitelist', ensureAdmin, async (req, res) => {
+router.post('/whitelist', isAdmin, async (req, res) => {
     const { gameId } = req.body;
     if (!gameId) {
         return res.json({ success: false, message: '請提供遊戲 ID' });
@@ -125,7 +136,7 @@ router.post('/whitelist', ensureAdmin, async (req, res) => {
     }
 });
 
-router.delete('/whitelist/:gameId', ensureAdmin, async (req, res) => {
+router.delete('/whitelist/:gameId', isAdmin, async (req, res) => {
     try {
         const { gameId } = req.params;
         const whitelistEntry = await Whitelist.findOneAndDelete({ gameId });
@@ -144,7 +155,7 @@ router.delete('/whitelist/:gameId', ensureAdmin, async (req, res) => {
 });
 
 // 批量導入白名單
-router.post('/whitelist/bulk', ensureAdmin, upload.single('csvFile'), async (req, res) => {
+router.post('/whitelist/bulk', isAdmin, upload.single('csvFile'), async (req, res) => {
     if (!req.file) {
         return res.json({ success: false, message: '請上傳 CSV 檔案' });
     }
@@ -264,7 +275,7 @@ router.post('/id/change', async (req, res) => {
 });
 
 // 獲取待審核申請（管理員專用）
-router.get('/pending-requests', ensureAdmin, async (req, res) => {
+router.get('/pending-requests', isAdmin, async (req, res) => {
     try {
         const requests = await PendingRequest.find({ status: 'pending' })
             .populate('userId', 'discordId username gameId job');
@@ -275,7 +286,7 @@ router.get('/pending-requests', ensureAdmin, async (req, res) => {
 });
 
 // 審核申請（管理員專用）
-router.post('/pending-requests/:requestId', ensureAdmin, async (req, res) => {
+router.post('/pending-requests/:requestId', isAdmin, async (req, res) => {
     const { action } = req.body; // 'approve' or 'reject'
     if (!['approve', 'reject'].includes(action)) {
         return res.json({ success: false, message: '無效的操作' });
@@ -331,7 +342,7 @@ router.post('/pending-requests/:requestId', ensureAdmin, async (req, res) => {
 });
 
 // 創建新幫戰
-router.post('/battle/create', ensureAdmin, async (req, res) => {
+router.post('/battle/create', isAdmin, async (req, res) => {
     try {
         const { battleDate, deadline } = req.body;
         const existingBattle = await Battle.findOne({ status: { $ne: 'confirmed' } });
@@ -464,7 +475,7 @@ router.post('/registration/proxy', async (req, res) => {
 });
 
 // 更新陣型
-router.post('/battle/formation', ensureAdmin, async (req, res) => {
+router.post('/battle/formation', isAdmin, async (req, res) => {
     try {
         const { battleId, formation } = req.body;
         const battle = await Battle.findById(battleId);
@@ -486,7 +497,7 @@ router.post('/battle/formation', ensureAdmin, async (req, res) => {
 });
 
 // 確認最終出戰表
-router.post('/battle/confirm', ensureAdmin, async (req, res) => {
+router.post('/battle/confirm', isAdmin, async (req, res) => {
     try {
         const { battleId, attendance } = req.body;
         const battle = await Battle.findById(battleId);
@@ -515,7 +526,7 @@ router.post('/battle/confirm', ensureAdmin, async (req, res) => {
 });
 
 // 獲取成員列表
-router.get('/users', ensureAdmin, async (req, res) => {
+router.get('/users', isAdmin, async (req, res) => {
     try {
         const { job } = req.query;
         const query = job ? { job } : {};
@@ -527,7 +538,7 @@ router.get('/users', ensureAdmin, async (req, res) => {
 });
 
 // 更新成員狀態
-router.post('/user/update', ensureAdmin, async (req, res) => {
+router.post('/user/update', isAdmin, async (req, res) => {
     try {
         const { userId, isAdmin, onLeave } = req.body;
         const user = await User.findById(userId);
@@ -549,7 +560,7 @@ router.post('/user/update', ensureAdmin, async (req, res) => {
 });
 
 // 刪除成員
-router.delete('/user/:id', ensureAdmin, async (req, res) => {
+router.delete('/user/:id', isAdmin, async (req, res) => {
     try {
         const user = await User.findById(req.params.id);
         if (!user) {
@@ -593,7 +604,7 @@ router.post('/leave/request', async (req, res) => {
 });
 
 // 審核請假
-router.post('/leave/approve', ensureAdmin, async (req, res) => {
+router.post('/leave/approve', isAdmin, async (req, res) => {
     try {
         const { requestId, status } = req.body;
         const leaveRequest = await LeaveRequest.findById(requestId).populate('userId');
@@ -678,7 +689,7 @@ router.get('/attendance', async (req, res) => {
 });
 
 // 獲取統計資料
-router.get('/statistics', ensureAdmin, async (req, res) => {
+router.get('/statistics', isAdmin, async (req, res) => {
     try {
         const totalUsers = await User.countDocuments();
         const registeredUsers = await Registration.countDocuments({ battleId: (await Battle.findOne({ status: 'pending' }))?._id });
@@ -697,7 +708,7 @@ router.get('/statistics', ensureAdmin, async (req, res) => {
 });
 
 // 獲取變更日誌
-router.get('/changelogs', ensureAdmin, async (req, res) => {
+router.get('/changelogs', isAdmin, async (req, res) => {
     try {
         const { date, userId, type } = req.query;
         const query = {};
