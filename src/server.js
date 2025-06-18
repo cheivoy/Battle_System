@@ -67,10 +67,17 @@ app.use('/auth', require('./routes/auth'));
 app.use('/api', require('./routes/api'));
 
 // ✅ 首頁根據登入狀態導向
+// 修改後
 app.get('/', (req, res) => {
     if (req.isAuthenticated && req.isAuthenticated()) {
-        console.log('✅ User logged in, redirecting to index.html');
-        res.redirect('/index.html');
+        // 檢查用戶是否完成初始設定
+        if (req.user.gameId && req.user.job) {
+            console.log('✅ User configured, redirecting to home.html');
+            res.redirect('/home.html');
+        } else {
+            console.log('✅ User logged in but not configured, redirecting to index.html');
+            res.redirect('/index.html');
+        }
     } else {
         console.log('❌ User not logged in, redirecting to login.html');
         res.redirect('/login.html');
