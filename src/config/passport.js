@@ -1,7 +1,6 @@
 const DiscordStrategy = require('passport-discord').Strategy;
 const passport = require('passport');
 const User = require('../models/user');
-const Whitelist = require('../models/whitelist');
 
 passport.use(new DiscordStrategy({
     clientID: process.env.DISCORD_CLIENT_ID,
@@ -10,10 +9,6 @@ passport.use(new DiscordStrategy({
     scope: ['identify']
 }, async (accessToken, refreshToken, profile, done) => {
     try {
-        const allowedIds = process.env.ALLOWED_MEMBER_IDS.split(',');
-        if (!allowedIds.includes(profile.id)) {
-            return done(null, false, { message: '未授權的用戶' });
-        }
         let user = await User.findOne({ discordId: profile.id });
         if (!user) {
             user = new User({
