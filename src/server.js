@@ -61,6 +61,26 @@ const ensureAuthenticated = (req, res, next) => {
 app.use('/auth', require('./routes/auth'));
 app.use('/api', require('./routes/api'));
 
+
+app.get('/', (req, res) => {
+    res.redirect('/login.html'); // 首頁重定向到 login.html
+});
+app.get('*', (req, res) => {
+    const filePath = path.join(__dirname, 'public', req.path.endsWith('.html') ? req.path : `${req.path}.html`);
+    console.log(`Attempting to serve file: ${filePath}`); // 診斷請求路徑
+    res.sendFile(filePath, (err) => {
+        if (err) {
+            console.error(`Error serving file ${filePath}:`, err.message);
+            res.sendFile(path.join(__dirname, 'public', '404.html'), (err404) => {
+                if (err404) {
+                    console.error('Error serving 404.html:', err404.message);
+                    res.status(404).send('Page not found');
+                }
+            });
+        }
+    });
+});
+
 // 頁面路由
 app.get(['/', '/index.html'], (req, res) => {
     const fileName = req.isAuthenticated() ? 'index.html' : 'login.html';
