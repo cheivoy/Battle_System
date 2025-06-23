@@ -10,11 +10,53 @@
 <body class="bg-gray-100">
     <div class="container mx-auto p-4">
         <h1 class="text-2xl font-bold mb-4">🛡️ 幫戰報名管理系統 - 用戶設定</h1>
+        
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="hidden bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4">
+            <div class="flex items-center">
+                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-700 mr-2"></div>
+                載入中...
+            </div>
+        </div>
+        
+        <!-- Notification Area -->
+        <div id="notification" class="hidden px-4 py-3 rounded mb-4"></div>
+        
         <div id="setupForm" class="bg-white p-6 rounded-lg shadow-lg"></div>
     </div>
     <script src="/scripts.js"></script>
     <script>
         const jobs = ['鐵衣', '素問', '九靈', '神相', '血河', '碎夢', '龍吟'];
+
+        // Safe loading function that checks if element exists
+        function showLoading(show) {
+            const loadingElement = document.getElementById('loadingIndicator');
+            if (loadingElement) {
+                if (show) {
+                    loadingElement.classList.remove('hidden');
+                } else {
+                    loadingElement.classList.add('hidden');
+                }
+            }
+        }
+
+        // Safe notification function
+        function showNotification(message, type = 'info') {
+            const notificationElement = document.getElementById('notification');
+            if (notificationElement) {
+                notificationElement.textContent = message;
+                notificationElement.className = `px-4 py-3 rounded mb-4 notification-${type}`;
+                notificationElement.classList.remove('hidden');
+                
+                // Auto-hide after 5 seconds
+                setTimeout(() => {
+                    notificationElement.classList.add('hidden');
+                }, 5000);
+            } else {
+                // Fallback to alert if notification element doesn't exist
+                alert(message);
+            }
+        }
 
         async function loadSetupForm() {
             showLoading(true);

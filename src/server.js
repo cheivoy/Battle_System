@@ -40,17 +40,10 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// 靜態檔案目錄
-const publicPath = path.join(__dirname, 'public');
-app.use(express.static(publicPath));
+// 路由
+app.use('/auth', require('./routes/auth'));
+app.use('/api', require('./routes/api'));
 
-// 顯示 public 目錄內容（debug）
-try {
-    const publicFiles = fs.readdirSync(publicPath);
-    console.log('Public directory contents:', publicFiles);
-} catch (err) {
-    console.error('Error reading public directory:', err.message);
-}
 
 // 登入驗證中介
 const ensureAuthenticated = (req, res, next) => {
@@ -62,9 +55,7 @@ const ensureAuthenticated = (req, res, next) => {
     res.redirect('/login.html?error=unauthenticated');
 };
 
-// 路由
-app.use('/auth', require('./routes/auth'));
-app.use('/api', require('./routes/api'));
+
 
 // ✅ 首頁根據登入狀態導向
 // 修改後
@@ -95,6 +86,19 @@ app.get('/home.html', ensureAuthenticated, (req, res) => {
         }
     });
 });
+
+// 靜態檔案目錄
+const publicPath = path.join(__dirname, 'public');
+app.use(express.static(publicPath));
+
+// 顯示 public 目錄內容（debug）
+try {
+    const publicFiles = fs.readdirSync(publicPath);
+    console.log('Public directory contents:', publicFiles);
+} catch (err) {
+    console.error('Error reading public directory:', err.message);
+}
+
 
 // ✅ 404 fallback route
 app.get('*', (req, res) => {
