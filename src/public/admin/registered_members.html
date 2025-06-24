@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -6,6 +7,13 @@
     <title>報名名單</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
+    <style>
+        .notification-success { background-color: #d4edda; color: #155724; }
+        .notification-error { background-color: #f8d7da; color: #721c24; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
 </head>
 <body class="bg-gray-100 flex">
     <aside id="sidebar" class="bg-gray-800 text-white w-64 min-h-screen p-4 fixed transform -translate-x-full md:translate-x-0 transition-transform">
@@ -30,6 +38,12 @@
         <button id="hamburger" class="md:hidden text-gray-800 text-2xl mb-4">☰</button>
         <div class="container mx-auto">
             <h1 class="text-2xl font-bold mb-4">🛡️ 報名名單</h1>
+            <div class="mb-4">
+                <label class="block text-gray-700 font-bold mb-2">選擇幫戰：</label>
+                <select id="battleSelect" class="border rounded w-full p-2" onchange="loadRegistrations()">
+                    <option value="">請選擇幫戰</option>
+                </select>
+            </div>
             <div id="battleInfo" class="bg-white p-4 rounded-lg shadow-lg mb-4"></div>
             <div id="registrationList" class="bg-white p-4 rounded-lg shadow-lg overflow-x-auto"></div>
         </div>
@@ -40,42 +54,130 @@
     </div>
     <script src="/scripts.js"></script>
     <script>
-        async function loadRegistrations() {
+        function showLoading(show) {
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) {
+                loadingElement.classList.toggle('hidden', !show);
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            const notificationElement = document.getElementById('notification');
+            if (notificationElement) {
+                notificationElement.textContent = message;
+                notificationElement.className = `fixed top-4 right-4 p-4 rounded shadow-lg notification-${type}`;
+                notificationElement.classList.remove('hidden');
+                setTimeout(() => notificationElement.classList.add('hidden'), 5000);
+            } else {
+                alert(message);
+            }
+        }
+
+        async function checkAdmin() {
             showLoading(true);
             try {
-                const battleRes = await fetch('/api/battle/current', { credentials: 'include' });
-                const battleData = await battleRes.json();
-                const battleInfo = document.getElementById('battleInfo');
-                if (!battleData.success) {
-                    battleInfo.innerHTML = '<p>目前無進行中的幫戰</p>';
-                    document.getElementById('registrationList').innerHTML = '<p>無報名名單</p>';
+                const res = await fetch('/api/user/status', { credentials: 'include' });
+                const data = await res.json();
+                console.log('檢查管理員身份:', data);
+                if (!data.success || !data.user.isAdmin) {
+                    window.location.href = '/home.html';
+                }
+            } catch (err) {
+                console.error('檢查管理員身份錯誤:', err);
+                showNotification('無法驗證身份', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadBattles() {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/battle/current', { credentials: 'include' });
+                const data = await res.json();
+                console.log('幫戰數據:', data);
+                const battleSelect = document.getElementById('battleSelect');
+                if (data.success && data.battles && data.battles.length > 0) {
+                    battleSelect.innerHTML = '<option value="">請選擇幫戰</option>' + 
+                        data.battles.map(battle => 
+                            `<option value="${battle._id}">${new Date(battle.battleDate).toLocaleString()} (${battle.status === 'pending' ? '報名中' : battle.status === 'published' ? '已發布' : '已關閉'})</option>`
+                        ).join('');
+                    if (data.battles.length === 1) {
+                        battleSelect.value = data.battles[0]._id;
+                        loadRegistrations();
+                    }
+                } else {
+                    battleSelect.innerHTML = '<option value="">無進行中的幫戰</option>';
+                    document.getElementById('battleInfo').innerHTML = '<p class="text-gray-600">目前無進行中的幫戰</p>';
+                    document.getElementById('registrationList').innerHTML = '';
+                }
+            } catch (err) {
+                console.error('載入幫戰錯誤:', err);
+                showNotification('無法載入幫戰列表', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadRegistrations() {
+            const battleId = document.getElementById('battleSelect').value;
+            if (!battleId) {
+                document.getElementById('battleInfo').innerHTML = '<p class="text-gray-600">請選擇幫戰</p>';
+                document.getElementById('registrationList').innerHTML = '';
+                return;
+            }
+            showLoading(true);
+            try {
+                const res = await fetch('/api/battle/current', { credentials: 'include' });
+                const data = await res.json();
+                console.log('幫戰數據:', data);
+                if (!data.success || !data.battles) {
+                    showNotification('無法載入幫戰數據', 'error');
                     return;
                 }
-                battleInfo.innerHTML = `
-                    <h2 class="text-lg font-bold">當前幫戰</h2>
-                    <p>日期：${new Date(battleData.battle.battleDate).toLocaleString()}</p>
-                    <p>報名截止：${new Date(battleData.battle.deadline).toLocaleString()}</p>
-                    <p>狀態：${battleData.battle.status === 'pending' ? '報名中' : '已發布'}</p>
+                const battle = data.battles.find(b => b._id === battleId);
+                if (!battle) {
+                    showNotification('幫戰不存在或已結束', 'error');
+                    document.getElementById('battleInfo').innerHTML = '<p class="text-gray-600">幫戰不存在或已結束</p>';
+                    document.getElementById('registrationList').innerHTML = '';
+                    return;
+                }
+                document.getElementById('battleInfo').innerHTML = `
+                    <h2 class="text-lg font-bold">幫戰資訊</h2>
+                    <p>日期：${new Date(battle.battleDate).toLocaleString()}</p>
+                    <p>報名截止：${new Date(battle.deadline).toLocaleString()}</p>
+                    <p>狀態：${battle.status === 'pending' ? '報名中' : battle.status === 'published' ? '已發布' : '已關閉'}</p>
                 `;
-                const registrations = battleData.battle.registrations || [];
-                document.getElementById('registrationList').innerHTML = `
-                    <table class="table-auto w-full">
-                        <thead>
-                            <tr><th>玩家 ID</th><th>職業</th><th>備選</th><th>代報名</th></tr>
-                        </thead>
-                        <tbody>
-                            ${registrations.map(reg => `
+                const registrationList = document.getElementById('registrationList');
+                if (battle.registrations && battle.registrations.length > 0) {
+                    registrationList.innerHTML = `
+                        <h2 class="text-lg font-bold mb-2">報名名單</h2>
+                        <table>
+                            <thead>
                                 <tr>
-                                    <td>${reg.userId.gameId}</td>
-                                    <td>${reg.userId.job}</td>
-                                    <td>${reg.isBackup ? '是' : '否'}</td>
-                                    <td>${reg.isProxy ? '是' : '否'}</td>
+                                    <th>遊戲 ID</th>
+                                    <th>職業</th>
+                                    <th>報名時間</th>
+                                    <th>狀態</th>
                                 </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
+                            </thead>
+                            <tbody>
+                                ${battle.registrations.map(reg => `
+                                    <tr>
+                                        <td>${reg.userId.gameId || '未知'}</td>
+                                        <td>${reg.userId.job || '未知'}</td>
+                                        <td>${new Date(reg.createdAt).toLocaleString()}</td>
+                                        <td>${reg.isBackup ? '備選' : '正式'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    registrationList.innerHTML = '<p class="text-gray-600">無報名記錄</p>';
+                }
             } catch (err) {
+                console.error('載入報名名單錯誤:', err);
                 showNotification('無法載入報名名單', 'error');
             } finally {
                 showLoading(false);
@@ -87,7 +189,12 @@
             sidebar.classList.toggle('-translate-x-full');
         });
 
-        document.addEventListener('DOMContentLoaded', loadRegistrations);
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('頁面加載，檢查管理員並載入幫戰');
+            checkAdmin();
+            loadBattles();
+        });
     </script>
 </body>
 </html>
+```

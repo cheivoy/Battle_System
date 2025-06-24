@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -45,6 +46,18 @@
         const jobs = ['戰士', '法師', '盜賊', '牧師', '騎士'];
         const squadNames = ['小隊1', '小隊2', '小隊3', '小隊4', '小隊5', '小隊6', '小隊7'];
 
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('hidden', !show);
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `fixed top-4 right-4 p-4 rounded shadow-lg notification-${type}`;
+            notification.classList.remove('hidden');
+            setTimeout(() => notification.classList.add('hidden'), 5000);
+        }
+
         async function checkAdmin() {
             showLoading(true);
             try {
@@ -71,7 +84,12 @@
                 }
                 const battleRes = await fetch('/api/battle/current', { credentials: 'include' });
                 const battleData = await battleRes.json();
-                if (!battleData.success || battleData.battle._id !== battleId) {
+                if (!battleData.success || !battleData.battles) {
+                    showNotification('無法載入幫戰數據', 'error');
+                    return;
+                }
+                const battle = battleData.battles.find(b => b._id === battleId);
+                if (!battle) {
                     showNotification('幫戰不存在或已結束', 'error');
                     return;
                 }
@@ -84,13 +102,13 @@
                 const battleInfo = document.getElementById('battleInfo');
                 battleInfo.innerHTML = `
                     <h2 class="text-lg font-bold">幫戰資訊</h2>
-                    <p>日期：${new Date(battleData.battle.battleDate).toLocaleString()}</p>
-                    <p>報名截止：${new Date(battleData.battle.deadline).toLocaleString()}</p>
-                    <p>狀態：${battleData.battle.status === 'pending' ? '報名中' : '已發布'}</p>
+                    <p>日期：${new Date(battle.battleDate).toLocaleString()}</p>
+                    <p>報名截止：${new Date(battle.deadline).toLocaleString()}</p>
+                    <p>狀態：${battle.status === 'pending' ? '報名中' : '已發布'}</p>
                 `;
                 const formationForm = document.getElementById('formationForm');
-                const groupA = battleData.battle.formation.groupA || Array(70).fill({ squadName: '', job: '', gameId: '' });
-                const groupB = battleData.battle.formation.groupB || Array(70).fill({ squadName: '', job: '', gameId: '' });
+                const groupA = battle.formation.groupA || Array(70).fill({ squadName: '', job: '', gameId: '' });
+                const groupB = battle.formation.groupB || Array(70).fill({ squadName: '', job: '', gameId: '' });
                 formationForm.innerHTML = `
                     <h2 class="text-lg font-bold mb-2">分團 A (7x10)</h2>
                     <table class="table-auto w-full mb-4">
@@ -138,9 +156,9 @@
                     </table>
                 `;
                 document.getElementById('publishBtn').classList.remove('hidden');
-                if (battleData.battle.status === 'published') {
+                if (battle.status === 'published') {
                     document.getElementById('confirmBtn').classList.remove('hidden');
-                    loadConfirmForm(battleData.battle, usersData.users);
+                    loadConfirmForm(battle, usersData.users);
                 }
                 document.getElementById('publishBtn').addEventListener('click', async () => {
                     const formation = {
@@ -175,6 +193,7 @@
                     }
                 });
             } catch (err) {
+                console.error('載入陣型錯誤:', err);
                 showNotification('無法載入陣型', 'error');
             } finally {
                 showLoading(false);
@@ -220,6 +239,7 @@
                         window.location.href = '/admin/battle_management.html';
                     }
                 } catch (err) {
+                    console.error('確認出戰表錯誤:', err);
                     showNotification('確認失敗', 'error');
                 } finally {
                     showLoading(false);
@@ -239,3 +259,4 @@
     </script>
 </body>
 </html>
+```

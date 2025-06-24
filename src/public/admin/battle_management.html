@@ -108,15 +108,22 @@
                                 <p><strong>日期：</strong>${new Date(battle.battleDate).toLocaleString()}</p>
                                 <p><strong>報名截止：</strong>${new Date(battle.deadline).toLocaleString()}</p>
                                 <p><strong>狀態：</strong>${battle.status === 'pending' ? '報名中' : '已發布待確認'}</p>
+                                <p><strong>報名人數：</strong>${battle.registrations ? battle.registrations.length : 0}</p>
                                 <div class="mt-2 flex space-x-2">
                                     ${battle.status === 'pending' ? `
                                         <button class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" 
                                                 onclick="registerForBattle('${battle._id}')">報名</button>
                                         <button class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" 
                                                 onclick="editFormation('${battle._id}')">編輯陣型</button>
+                                        <button class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" 
+                                                onclick="closeBattle('${battle._id}')">關閉報名</button>
+                                        <button class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600" 
+                                                onclick="deleteBattle('${battle._id}')">刪除幫戰</button>
                                     ` : `
                                         <button class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" 
                                                 onclick="editFormation('${battle._id}')">確認出戰表</button>
+                                        <button class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600" 
+                                                onclick="deleteBattle('${battle._id}')">刪除幫戰</button>
                                     `}
                                 </div>
                             </div>
@@ -151,6 +158,52 @@
             } catch (err) {
                 console.error('報名錯誤:', err);
                 showNotification('報名失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function closeBattle(battleId) {
+            if (!confirm('確定要關閉報名嗎？此操作無法撤銷。')) return;
+            showLoading(true);
+            try {
+                const res = await fetch('/api/battle/close', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ battleId })
+                });
+                const data = await res.json();
+                console.log('關閉報名結果:', data);
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) {
+                    loadBattleStatus();
+                }
+            } catch (err) {
+                console.error('關閉報名錯誤:', err);
+                showNotification('關閉報名失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function deleteBattle(battleId) {
+            if (!confirm('確定要刪除此幫戰嗎？此操作將刪除所有相關報名記錄。')) return;
+            showLoading(true);
+            try {
+                const res = await fetch(`/api/battle/${battleId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                const data = await res.json();
+                console.log('刪除幫戰結果:', data);
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) {
+                    loadBattleStatus();
+                }
+            } catch (err) {
+                console.error('刪除幫戰錯誤:', err);
+                showNotification('刪除幫戰失敗', 'error');
             } finally {
                 showLoading(false);
             }
