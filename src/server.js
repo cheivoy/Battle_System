@@ -59,8 +59,9 @@ const ensureAuthenticated = (req, res, next) => {
 
 // ✅ 首頁根據登入狀態導向
 // 修改後
+// ✅ 首頁根據登入狀態導向
 app.get('/', (req, res) => {
-    if (req.isAuthenticated && req.isAuthenticated()) {
+    if (req.isAuthenticated()) {
         // 檢查用戶是否完成初始設定
         if (req.user.gameId && req.user.job) {
             console.log('✅ User configured, redirecting to home.html');
