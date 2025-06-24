@@ -11,10 +11,10 @@ passport.use(new DiscordStrategy({
 }, async (accessToken, refreshToken, profile, done) => {
     try {
         let user = await User.findOne({ discordId: profile.id });
-        
+
         // 檢查是否為 Master Admin
         const isMasterAdmin = profile.id === process.env.MASTER_ADMIN_ID;
-        
+
         if (!user) {
             // 新用戶 - 檢查白名單或 Master Admin
             if (isMasterAdmin) {
@@ -45,7 +45,7 @@ passport.use(new DiscordStrategy({
             // 現有用戶 - 更新基本資料
             user.username = profile.username;
             user.discriminator = profile.discriminator;
-            
+
             // 如果是 Master Admin 但還沒設定管理員權限
             if (isMasterAdmin && !user.isAdmin) {
                 user.isAdmin = true;
@@ -54,7 +54,7 @@ passport.use(new DiscordStrategy({
                 console.log(`✅ Updated Master Admin privileges for: ${profile.username}`);
             }
         }
-        
+
         await user.save();
         console.log(`✅ User saved: ${user.username}, GameId: ${user.gameId}, Job: ${user.job}`);
         return done(null, user);
@@ -64,13 +64,24 @@ passport.use(new DiscordStrategy({
     }
 }));
 
-passport.serializeUser((user, done) => done(null, user.id));
+passport.serializeUser((user, done) => {
+    console.log('🔄 Serializing user:', user._id);
+    done(null, user._id);
+});
 
 passport.deserializeUser(async (id, done) => {
     try {
+        console.log('🔄 Deserializing user ID:', id);
         const user = await User.findById(id);
-        done(null, user);
+        if (user) {
+            console.log('✅ User deserialized:', user.username);
+            done(null, user);
+        } else {
+            console.log('❌ User not found during deserialization');
+            done(null, false);
+        }
     } catch (err) {
+        console.error('❌ Deserialization error:', err);
         done(err, null);
     }
 });
