@@ -33,11 +33,12 @@ app.use(session({
         ttl: 24 * 60 * 60
     }),
     cookie: {
-        secure: process.env.NODE_ENV === 'production',
+        secure: false, // 暫時設為 false 來測試
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000,
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
-    }
+        sameSite: 'lax' // 改為 lax
+    },
+    name: 'connect.sid' // 明確指定 cookie 名稱
 }));
 // 添加在 app.use(passport.session()); 之後
 app.use((req, res, next) => {
