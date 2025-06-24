@@ -6,6 +6,10 @@
     <title>幫戰報名管理系統 - 用戶設定</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
+    <style>
+        .notification-success { background-color: #d4edda; color: #155724; }
+        .notification-error { background-color: #f8d7da; color: #721c24; }
+    </style>
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto p-4">
@@ -20,40 +24,29 @@
         </div>
         
         <!-- Notification Area -->
-        <div id="notification" class="hidden px-4 py-3 rounded mb-4"></div>
+        <div id="notification" class="fixed top-4 right-4 hidden p-4 rounded shadow-lg"></div>
         
         <div id="setupForm" class="bg-white p-6 rounded-lg shadow-lg"></div>
     </div>
     <script src="/scripts.js"></script>
     <script>
-        const jobs = ['鐵衣', '素問', '九靈', '神相', '血河', '碎夢', '龍吟'];
+        const jobs = ['鐵心', '素問', '九靈', '神相', '血河', '碎夢', '龍吟'];
 
-        // Safe loading function that checks if element exists
         function showLoading(show) {
             const loadingElement = document.getElementById('loadingIndicator');
             if (loadingElement) {
-                if (show) {
-                    loadingElement.classList.remove('hidden');
-                } else {
-                    loadingElement.classList.add('hidden');
-                }
+                loadingElement.classList.toggle('hidden', !show);
             }
         }
 
-        // Safe notification function
         function showNotification(message, type = 'info') {
             const notificationElement = document.getElementById('notification');
             if (notificationElement) {
                 notificationElement.textContent = message;
-                notificationElement.className = `px-4 py-3 rounded mb-4 notification-${type}`;
+                notificationElement.className = `fixed top-4 right-4 p-4 rounded shadow-lg notification-${type}`;
                 notificationElement.classList.remove('hidden');
-                
-                // Auto-hide after 5 seconds
-                setTimeout(() => {
-                    notificationElement.classList.add('hidden');
-                }, 5000);
+                setTimeout(() => notificationElement.classList.add('hidden'), 5000);
             } else {
-                // Fallback to alert if notification element doesn't exist
                 alert(message);
             }
         }
@@ -75,7 +68,15 @@
                 formDiv.innerHTML = `
                     <div class="mb-4">
                         <label class="block text-gray-700">遊戲 ID（1-7個中文字符）：</label>
-                        <input type="text" id="gameId" class="border rounded w-full p-2" placeholder="請輸入遊戲 ID" pattern="[\u4e00-\u9fa5]{1,7}">
+                        <input 
+                            type="text" 
+                            id="gameId" 
+                            class="border rounded w-full p-2" 
+                            placeholder="請輸入遊戲 ID" 
+                            maxlength="7"
+                            autocomplete="off"
+                        >
+                        <div id="inputFeedback" class="mt-2 text-sm"></div>
                     </div>
                     <div class="mb-4">
                         <label class="block text-gray-700">職業：</label>
@@ -86,6 +87,55 @@
                     </div>
                     <button class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" onclick="submitSetup()">提交</button>
                 `;
+
+                // 添加實時驗證
+                const gameIdInput = document.getElementById('gameId');
+                const inputFeedback = document.getElementById('inputFeedback');
+                const chineseRegex = /^[\u4e00-\u9fa5]*$/;
+                const validChineseRegex = /^[\u4e00-\u9fa5]{1,7}$/;
+
+                gameIdInput.addEventListener('input', function() {
+                    const value = this.value;
+                    if (value === '') {
+                        inputFeedback.textContent = '';
+                        inputFeedback.className = 'mt-2 text-sm';
+                        return;
+                    }
+                    if (!chineseRegex.test(value)) {
+                        inputFeedback.textContent = '⚠️ 只能輸入中文字符';
+                        inputFeedback.className = 'mt-2 text-sm text-red-600';
+                        return;
+                    }
+                    if (value.length > 7) {
+                        inputFeedback.textContent = '⚠️ 最多7個中文字符';
+                        inputFeedback.className = 'mt-2 text-sm text-red-600';
+                        return;
+                    }
+                    if (validChineseRegex.test(value)) {
+                        inputFeedback.textContent = '✓ 格式正確';
+                        inputFeedback.className = 'mt-2 text-sm text-green-600';
+                    } else {
+                        inputFeedback.textContent = '需要1-7個中文字符';
+                        inputFeedback.className = 'mt-2 text-sm text-gray-600';
+                    }
+                });
+
+                gameIdInput.addEventListener('keypress', function(e) {
+                    const char = String.fromCharCode(e.which);
+                    if (!chineseRegex.test(char) && e.which !== 8 && e.which !== 0) {
+                        e.preventDefault();
+                    }
+                });
+
+                gameIdInput.addEventListener('paste', function(e) {
+                    setTimeout(() => {
+                        const value = this.value;
+                        const cleanValue = value.replace(/[^\u4e00-\u9fa5]/g, '');
+                        const limitedValue = cleanValue.substring(0, 7);
+                        this.value = limitedValue;
+                        this.dispatchEvent(new Event('input'));
+                    }, 0);
+                });
             } catch (err) {
                 showNotification('無法載入設定表單', 'error');
             } finally {

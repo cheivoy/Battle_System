@@ -6,6 +6,10 @@
     <title>幫戰管理</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
+    <style>
+        .notification-success { background-color: #d4edda; color: #155724; }
+        .notification-error { background-color: #f8d7da; color: #721c24; }
+    </style>
 </head>
 <body class="bg-gray-100 flex">
     <aside id="sidebar" class="bg-gray-800 text-white w-64 min-h-screen p-4 fixed transform -translate-x-full md:translate-x-0 transition-transform">
@@ -29,7 +33,7 @@
     <main class="flex-1 p-4 md:ml-64">
         <button id="hamburger" class="md:hidden text-gray-800 text-2xl mb-4">☰</button>
         <div class="container mx-auto">
-            <h1 class="text-2xl font-bold mb-4">🛡️ 幫戰管理</h1>
+            <h1 class="text-2xl font-bold mb-6">⚡ 幫戰管理</h1>
             <form id="battleForm" class="bg-white p-6 rounded-lg shadow-lg mb-4">
                 <div class="mb-4">
                     <label class="block text-gray-700">幫戰日期：</label>
@@ -41,7 +45,7 @@
                 </div>
                 <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">創建幫戰</button>
             </form>
-            <div id="battleStatus" class="bg-white p-4 rounded-lg shadow-lg"></div>
+            <div id="battleStatus" class="bg-white p-6 rounded-lg shadow-lg"></div>
         </div>
     </main>
     <div id="notification" class="fixed top-4 right-4 hidden p-4 rounded shadow-lg"></div>
@@ -50,6 +54,25 @@
     </div>
     <script src="/scripts.js"></script>
     <script>
+        function showLoading(show) {
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) {
+                loadingElement.classList.toggle('hidden', !show);
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            const notificationElement = document.getElementById('notification');
+            if (notificationElement) {
+                notificationElement.textContent = message;
+                notificationElement.className = `fixed top-4 right-4 p-4 rounded shadow-lg notification-${type}`;
+                notificationElement.classList.remove('hidden');
+                setTimeout(() => notificationElement.classList.add('hidden'), 5000);
+            } else {
+                alert(message);
+            }
+        }
+
         async function checkAdmin() {
             showLoading(true);
             try {
@@ -73,7 +96,7 @@
                 const battleStatus = document.getElementById('battleStatus');
                 if (data.success) {
                     battleStatus.innerHTML = `
-                        <h2 class="text-lg font-bold">當前幫戰</h2>
+                        <h2 class="text-lg font-bold mb-2">當前幫戰</h2>
                         <p>日期：${new Date(data.battle.battleDate).toLocaleString()}</p>
                         <p>報名截止：${new Date(data.battle.deadline).toLocaleString()}</p>
                         <p>狀態：${data.battle.status === 'pending' ? '報名中' : '已發布'}</p>
@@ -85,7 +108,7 @@
                         });
                     }
                 } else {
-                    battleStatus.innerHTML = '<p>目前無進行中的幫戰</p>';
+                    battleStatus.innerHTML = '<p class="text-gray-600">目前無進行中的幫戰</p>';
                 }
             } catch (err) {
                 showNotification('無法載入幫戰狀態', 'error');
@@ -111,8 +134,24 @@
                 if (data.success) {
                     loadBattleStatus();
                 } else if (data.action === 'confirm') {
-                    if (confirm('請先確認最終出戰表，是否立即前往？')) {
-                        window.location.href = '/admin/formation_management.html';
+                    const userChoice = confirm(
+                        `請先確認最終出戰表（日期：${new Date(data.battleDate).toLocaleString()}）。\n` +
+                        `點擊「確定」前往確認頁面，點擊「取消」繼續創建新幫戰。`
+                    );
+                    if (userChoice) {
+                        window.location.href = `/admin/formation_management.html?battleId=${data.battleId}`;
+                    } else {
+                        const retryRes = await fetch('/api/battle/create', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            body: JSON.stringify({ battleDate, deadline, forceCreate: true })
+                        });
+                        const retryData = await retryRes.json();
+                        showNotification(retryData.message, retryData.success ? 'success' : 'error');
+                        if (retryData.success) {
+                            loadBattleStatus();
+                        }
                     }
                 }
             } catch (err) {

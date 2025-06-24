@@ -6,6 +6,10 @@
     <title>ID 變更</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
+    <style>
+        .notification-success { background-color: #d4edda; color: #155724; }
+        .notification-error { background-color: #f8d7da; color: #721c24; }
+    </style>
 </head>
 <body class="bg-gray-100 flex">
     <aside id="sidebar" class="bg-gray-800 text-white w-64 min-h-screen p-4 fixed transform -translate-x-full md:translate-x-0 transition-transform">
@@ -53,6 +57,25 @@
     </div>
     <script src="/scripts.js"></script>
     <script>
+        function showLoading(show) {
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) {
+                loadingElement.classList.toggle('hidden', !show);
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            const notificationElement = document.getElementById('notification');
+            if (notificationElement) {
+                notificationElement.textContent = message;
+                notificationElement.className = `fixed top-4 right-4 p-4 rounded shadow-lg notification-${type}`;
+                notificationElement.classList.remove('hidden');
+                setTimeout(() => notificationElement.classList.add('hidden'), 5000);
+            } else {
+                alert(message);
+            }
+        }
+
         const newGameIdInput = document.getElementById('newGameId');
         const inputFeedback = document.getElementById('inputFeedback');
         

@@ -25,7 +25,6 @@ const upload = multer({
     }
 });
 
-
 // 檢查是否為管理員
 const isAdmin = (req, res, next) => {
     if (!req.isAuthenticated() || !req.user.isAdmin) {
@@ -81,6 +80,9 @@ router.post('/user/setup', async (req, res) => {
     const { gameId, job } = req.body;
     if (!gameId || !job) {
         return res.json({ success: false, message: '請提供遊戲 ID 和職業' });
+    }
+    if (!/^[\u4e00-\u9fa5]{1,7}$/.test(gameId)) {
+        return res.json({ success: false, message: '遊戲 ID 需為 1-7 個中文字符' });
     }
     try {
         // 檢查白名單
@@ -218,8 +220,6 @@ router.post('/whitelist/bulk', isAdmin, upload.single('csvFile'), async (req, re
     }
 });
 
-
-
 // 職業變更申請
 router.post('/job/change', async (req, res) => {
     if (!req.isAuthenticated()) {
@@ -342,50 +342,49 @@ router.post('/pending-requests/:requestId', isAdmin, async (req, res) => {
 });
 
 // 創建新幫戰
-// 在 api.js 中修改創建新幫戰的路由
 router.post('/battle/create', isAdmin, async (req, res) => {
     try {
-        const { battleDate, deadline } = req.body;
-        
+        const { battleDate, deadline, forceCreate } = req.body;
+
         // 查找狀態為 'published' 的幫戰（已發布但未確認最終出戰表）
         const publishedBattle = await Battle.findOne({ status: 'published' });
-        if (publishedBattle) {
-            return res.status(400).json({ 
-                success: false, 
-                message: '請先確認最終出戰表', 
+        if (publishedBattle && !forceCreate) {
+            return res.status(400).json({
+                success: false,
+                message: '請先確認最終出戰表',
                 action: 'confirm',
                 battleId: publishedBattle._id,
                 battleDate: publishedBattle.battleDate
             });
         }
-        
+
         // 查找狀態為 'pending' 的幫戰（報名中）
         const pendingBattle = await Battle.findOne({ status: 'pending' });
         if (pendingBattle) {
-            return res.status(400).json({ 
-                success: false, 
-                message: '目前有進行中的幫戰報名，請先完成或取消', 
+            return res.status(400).json({
+                success: false,
+                message: '目前有進行中的幫戰報名，請先完成或取消',
                 action: 'existing_pending',
                 battleId: pendingBattle._id,
                 battleDate: pendingBattle.battleDate
             });
         }
-        
+
         const battle = new Battle({
             battleDate: new Date(battleDate),
             deadline: new Date(deadline),
             status: 'pending',
             formation: { groupA: [], groupB: [] }
         });
-        
+
         await battle.save();
-        
+
         await new ChangeLog({
             userId: req.user.discordId,
             type: 'battle_create',
-            message: `管理員創建幫戰，日期：${battleDate}`
+            message: `管理員創建幫戰，日期：${battleDate}${forceCreate ? '（強制創建）' : ''}`
         }).save();
-        
+
         res.json({ success: true, message: '幫戰創建成功' });
     } catch (err) {
         console.error('創建幫戰錯誤:', err);
