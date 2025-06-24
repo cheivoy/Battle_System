@@ -345,10 +345,17 @@ router.post('/pending-requests/:requestId', isAdmin, async (req, res) => {
 router.post('/battle/create', isAdmin, async (req, res) => {
     try {
         const { battleDate, deadline, forceCreate } = req.body;
+        console.log('創建幫戰請求:', { battleDate, deadline, forceCreate });
 
-        // 查找狀態為 'published' 的幫戰（已發布但未確認最終出戰表）
+        // 檢查輸入參數
+        if (!battleDate || !deadline) {
+            return res.status(400).json({ success: false, message: '請提供幫戰日期和報名截止時間' });
+        }
+
+        // 查找狀態為 'published' 的幫戰
         const publishedBattle = await Battle.findOne({ status: 'published' });
         if (publishedBattle && !forceCreate) {
+            console.log('發現未確認的出戰表:', publishedBattle._id);
             return res.status(400).json({
                 success: false,
                 message: '請先確認最終出戰表',
@@ -366,6 +373,7 @@ router.post('/battle/create', isAdmin, async (req, res) => {
         });
 
         await battle.save();
+        console.log('幫戰創建成功:', battle._id);
 
         await new ChangeLog({
             userId: req.user.discordId,
@@ -386,11 +394,13 @@ router.get('/battle/current', async (req, res) => {
         const battles = await Battle.find({ status: { $in: ['pending', 'published'] } })
             .populate('registrations.userId')
             .sort({ battleDate: 1 });
+        console.log('獲取進行中幫戰:', battles.length);
         if (!battles || battles.length === 0) {
             return res.json({ success: false, message: '無進行中的幫戰' });
         }
         res.json({ success: true, battles });
     } catch (err) {
+        console.error('獲取幫戰錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
