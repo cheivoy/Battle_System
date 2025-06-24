@@ -358,18 +358,6 @@ router.post('/battle/create', isAdmin, async (req, res) => {
             });
         }
 
-        // 查找狀態為 'pending' 的幫戰（報名中）
-        const pendingBattle = await Battle.findOne({ status: 'pending' });
-        if (pendingBattle) {
-            return res.status(400).json({
-                success: false,
-                message: '目前有進行中的幫戰報名，請先完成或取消',
-                action: 'existing_pending',
-                battleId: pendingBattle._id,
-                battleDate: pendingBattle.battleDate
-            });
-        }
-
         const battle = new Battle({
             battleDate: new Date(battleDate),
             deadline: new Date(deadline),
@@ -392,14 +380,16 @@ router.post('/battle/create', isAdmin, async (req, res) => {
     }
 });
 
-// 獲取當前幫戰
+// 獲取所有進行中的幫戰
 router.get('/battle/current', async (req, res) => {
     try {
-        const battle = await Battle.findOne({ status: { $ne: 'confirmed' } }).populate('registrations.userId');
-        if (!battle) {
+        const battles = await Battle.find({ status: { $in: ['pending', 'published'] } })
+            .populate('registrations.userId')
+            .sort({ battleDate: 1 });
+        if (!battles || battles.length === 0) {
             return res.json({ success: false, message: '無進行中的幫戰' });
         }
-        res.json({ success: true, battle });
+        res.json({ success: true, battles });
     } catch (err) {
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
@@ -408,9 +398,10 @@ router.get('/battle/current', async (req, res) => {
 // 報名
 router.post('/registration/register', async (req, res) => {
     try {
-        const battle = await Battle.findOne({ status: 'pending' });
-        if (!battle) {
-            return res.status(400).json({ success: false, message: '無進行中的幫戰' });
+        const { battleId } = req.body;
+        const battle = await Battle.findById(battleId);
+        if (!battle || battle.status !== 'pending') {
+            return res.status(400).json({ success: false, message: '無進行中的幫戰或報名已結束' });
         }
         const now = new Date();
         if (now > battle.deadline) {
@@ -440,9 +431,10 @@ router.post('/registration/register', async (req, res) => {
 // 取消報名
 router.post('/registration/cancel', async (req, res) => {
     try {
-        const battle = await Battle.findOne({ status: 'pending' });
-        if (!battle) {
-            return res.status(400).json({ success: false, message: '無進行中的幫戰' });
+        const { battleId } = req.body;
+        const battle = await Battle.findById(battleId);
+        if (!battle || battle.status !== 'pending') {
+            return res.status(400).json({ success: false, message: '無進行中的幫戰或報名已結束' });
         }
         const now = new Date();
         if (now > battle.deadline) {
@@ -467,10 +459,10 @@ router.post('/registration/cancel', async (req, res) => {
 // 代報名
 router.post('/registration/proxy', async (req, res) => {
     try {
-        const { userId } = req.body;
-        const battle = await Battle.findOne({ status: 'pending' });
-        if (!battle) {
-            return res.status(400).json({ success: false, message: '無進行中的幫戰' });
+        const { userId, battleId } = req.body;
+        const battle = await Battle.findById(battleId);
+        if (!battle || battle.status !== 'pending') {
+            return res.status(400).json({ success: false, message: '無進行中的幫戰或報名已結束' });
         }
         const now = new Date();
         const targetUser = await User.findById(userId);

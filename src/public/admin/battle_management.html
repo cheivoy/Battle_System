@@ -34,7 +34,7 @@
         <button id="hamburger" class="md:hidden text-gray-800 text-2xl mb-4">☰</button>
         <div class="container mx-auto">
             <h1 class="text-2xl font-bold mb-6">⚡ 幫戰管理</h1>
-            <form id="battleForm" class="bg-white p-6 rounded-lg shadow-lg mb-4">
+            <form id="battleForm" class="bg-white p-6 rounded-lg shadow-lg mb-6">
                 <div class="mb-4">
                     <label class="block text-gray-700">幫戰日期：</label>
                     <input type="datetime-local" id="battleDate" class="border rounded w-full p-2" required>
@@ -96,17 +96,26 @@
                 const battleStatus = document.getElementById('battleStatus');
                 if (data.success) {
                     battleStatus.innerHTML = `
-                        <h2 class="text-lg font-bold mb-2">當前幫戰</h2>
-                        <p>日期：${new Date(data.battle.battleDate).toLocaleString()}</p>
-                        <p>報名截止：${new Date(data.battle.deadline).toLocaleString()}</p>
-                        <p>狀態：${data.battle.status === 'pending' ? '報名中' : '已發布'}</p>
-                        ${data.battle.status === 'pending' ? '<button id="toFormation" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 mt-2">編輯陣型</button>' : ''}
+                        <h2 class="text-lg font-bold mb-4">進行中的幫戰</h2>
+                        ${data.battles.map(battle => `
+                            <div class="border-b py-4">
+                                <p><strong>日期：</strong>${new Date(battle.battleDate).toLocaleString()}</p>
+                                <p><strong>報名截止：</strong>${new Date(battle.deadline).toLocaleString()}</p>
+                                <p><strong>狀態：</strong>${battle.status === 'pending' ? '報名中' : '已發布'}</p>
+                                <div class="mt-2">
+                                    ${battle.status === 'pending' ? `
+                                        <button class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mr-2" 
+                                                onclick="registerForBattle('${battle._id}')">報名</button>
+                                        <button class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" 
+                                                onclick="editFormation('${battle._id}')">編輯陣型</button>
+                                    ` : `
+                                        <button class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" 
+                                                onclick="editFormation('${battle._id}')">確認出戰表</button>
+                                    `}
+                                </div>
+                            </div>
+                        `).join('')}
                     `;
-                    if (data.battle.status === 'pending') {
-                        document.getElementById('toFormation').addEventListener('click', () => {
-                            window.location.href = `/admin/formation_management.html?battleId=${data.battle._id}`;
-                        });
-                    }
                 } else {
                     battleStatus.innerHTML = '<p class="text-gray-600">目前無進行中的幫戰</p>';
                 }
@@ -115,6 +124,31 @@
             } finally {
                 showLoading(false);
             }
+        }
+
+        async function registerForBattle(battleId) {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/registration/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ battleId })
+                });
+                const data = await res.json();
+                showNotification(data.message, data.success ? 'success' : 'error');
+                if (data.success) {
+                    loadBattleStatus();
+                }
+            } catch (err) {
+                showNotification('報名失敗', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function editFormation(battleId) {
+            window.location.href = `/admin/formation_management.html?battleId=${battleId}`;
         }
 
         document.getElementById('battleForm').addEventListener('submit', async (e) => {
