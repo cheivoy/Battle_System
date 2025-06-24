@@ -15,7 +15,7 @@ const AttendanceRecord = require('../models/attendanceRecord');
 
 // 配置 multer 用於檔案上傳
 const upload = multer({
-    limits: { fileSize: 1024 * 1024 }, // 限制檔案大小為 1MB
+    limits: { fileSize: 1024 * 1024 },
     fileFilter: (req, file, cb) => {
         if (file.mimetype === 'text/csv') {
             cb(null, true);
@@ -41,9 +41,7 @@ async function sendWebhookNotification(message) {
         return;
     }
     try {
-        await axios.post(webhookUrl, {
-            content: message
-        });
+        await axios.post(webhookUrl, { content: message });
     } catch (err) {
         console.error('Webhook 通知發送失敗:', err.message);
     }
@@ -68,6 +66,7 @@ router.get('/user/status', async (req, res) => {
             }
         });
     } catch (err) {
+        console.error('獲取用戶資訊錯誤:', err);
         res.json({ success: false, message: '無法獲取用戶資訊' });
     }
 });
@@ -85,7 +84,6 @@ router.post('/user/setup', async (req, res) => {
         return res.json({ success: false, message: '遊戲 ID 需為 1-7 個中文字符' });
     }
     try {
-        // 檢查白名單
         const whitelistEntry = await Whitelist.findOne({ gameId });
         if (!whitelistEntry) {
             return res.json({ success: false, message: '遊戲 ID 不在白名單中' });
@@ -102,6 +100,7 @@ router.post('/user/setup', async (req, res) => {
         });
         res.json({ success: true, message: '設置成功' });
     } catch (err) {
+        console.error('設置用戶資訊錯誤:', err);
         res.json({ success: false, message: '設置失敗' });
     }
 });
@@ -112,6 +111,7 @@ router.get('/whitelist', isAdmin, async (req, res) => {
         const whitelist = await Whitelist.find();
         res.json({ success: true, whitelist });
     } catch (err) {
+        console.error('獲取白名單錯誤:', err);
         res.json({ success: false, message: '無法獲取白名單' });
     }
 });
@@ -134,6 +134,7 @@ router.post('/whitelist', isAdmin, async (req, res) => {
         });
         res.json({ success: true, message: '添加成功' });
     } catch (err) {
+        console.error('添加白名單錯誤:', err);
         res.json({ success: false, message: '添加失敗' });
     }
 });
@@ -152,6 +153,7 @@ router.delete('/whitelist/:gameId', isAdmin, async (req, res) => {
         });
         res.json({ success: true, message: '移除成功' });
     } catch (err) {
+        console.error('移除白名單錯誤:', err);
         res.json({ success: false, message: '移除失敗' });
     }
 });
@@ -166,7 +168,6 @@ router.post('/whitelist/bulk', isAdmin, upload.single('csvFile'), async (req, re
         const errors = [];
         const gameIds = [];
 
-        // 解析 CSV
         const bufferStream = new stream.PassThrough();
         bufferStream.end(req.file.buffer);
         bufferStream
@@ -180,24 +181,20 @@ router.post('/whitelist/bulk', isAdmin, upload.single('csvFile'), async (req, re
                 }
             })
             .on('end', async () => {
-                // 檢查重複 ID
                 const existingIds = await Whitelist.find({ gameId: { $in: gameIds } }).distinct('gameId');
                 const newIds = gameIds.filter(id => !existingIds.includes(id));
 
-                // 批量插入
                 if (newIds.length > 0) {
                     const bulkOps = newIds.map(id => ({
                         insertOne: { document: { gameId: id } }
                     }));
                     await Whitelist.bulkWrite(bulkOps);
                     results.push(`成功添加 ${newIds.length} 個遊戲 ID`);
-                    // 記錄日誌
                     await ChangeLog.insertMany(newIds.map(id => ({
                         userId: req.user.discordId,
                         type: 'whitelist_add',
                         message: `批量添加白名單遊戲 ID: ${id}`
                     })));
-                    // 發送 Webhook 通知
                     await sendWebhookNotification(`批量導入白名單：成功添加 ${newIds.length} 個遊戲 ID`);
                 }
 
@@ -213,9 +210,11 @@ router.post('/whitelist/bulk', isAdmin, upload.single('csvFile'), async (req, re
                 });
             })
             .on('error', (err) => {
+                console.error('CSV 解析錯誤:', err);
                 res.json({ success: false, message: `CSV 解析錯誤: ${err.message}` });
             });
     } catch (err) {
+        console.error('批量導入白名單錯誤:', err);
         res.json({ success: false, message: `處理失敗: ${err.message}` });
     }
 });
@@ -243,6 +242,7 @@ router.post('/job/change', async (req, res) => {
         await sendWebhookNotification(`新職業變更申請：用戶 ${req.user.discordId} 申請將職業變更為 ${newJob}`);
         res.json({ success: true, message: '申請已提交，待管理員審核' });
     } catch (err) {
+        console.error('職業變更申請錯誤:', err);
         res.json({ success: false, message: '申請失敗' });
     }
 });
@@ -270,6 +270,7 @@ router.post('/id/change', async (req, res) => {
         await sendWebhookNotification(`新 ID 變更申請：用戶 ${req.user.discordId} 申請將遊戲 ID 變更為 ${newGameId}`);
         res.json({ success: true, message: '申請已提交，待管理員審核' });
     } catch (err) {
+        console.error('ID 變更申請錯誤:', err);
         res.json({ success: false, message: '申請失敗' });
     }
 });
@@ -281,13 +282,14 @@ router.get('/pending-requests', isAdmin, async (req, res) => {
             .populate('userId', 'discordId username gameId job');
         res.json({ success: true, requests });
     } catch (err) {
+        console.error('獲取待審核申請錯誤:', err);
         res.json({ success: false, message: '無法獲取待審核申請' });
     }
 });
 
 // 審核申請（管理員專用）
 router.post('/pending-requests/:requestId', isAdmin, async (req, res) => {
-    const { action } = req.body; // 'approve' or 'reject'
+    const { action } = req.body;
     if (!['approve', 'reject'].includes(action)) {
         return res.json({ success: false, message: '無效的操作' });
     }
@@ -315,7 +317,6 @@ router.post('/pending-requests/:requestId', isAdmin, async (req, res) => {
                 const oldGameId = user.gameId;
                 user.gameId = request.data.newGameId;
                 await user.save();
-                // 更新白名單
                 await Whitelist.findOneAndUpdate(
                     { gameId: oldGameId },
                     { gameId: request.data.newGameId },
@@ -337,6 +338,7 @@ router.post('/pending-requests/:requestId', isAdmin, async (req, res) => {
         await sendWebhookNotification(`申請審核結果：用戶 ${request.userId.discordId} 的${request.type === 'job_change' ? '職業' : 'ID'} 變更申請已被${action === 'approve' ? '批准' : '拒絕'}`);
         res.json({ success: true, message: '審核完成' });
     } catch (err) {
+        console.error('審核申請錯誤:', err);
         res.json({ success: false, message: '審核失敗' });
     }
 });
@@ -347,12 +349,10 @@ router.post('/battle/create', isAdmin, async (req, res) => {
         const { battleDate, deadline, forceCreate } = req.body;
         console.log('創建幫戰請求:', { battleDate, deadline, forceCreate });
 
-        // 檢查輸入參數
         if (!battleDate || !deadline) {
             return res.status(400).json({ success: false, message: '請提供幫戰日期和報名截止時間' });
         }
 
-        // 查找狀態為 'published' 的幫戰
         const publishedBattle = await Battle.findOne({ status: 'published' });
         if (publishedBattle && !forceCreate) {
             console.log('發現未確認的出戰表:', publishedBattle._id);
@@ -375,13 +375,13 @@ router.post('/battle/create', isAdmin, async (req, res) => {
         await battle.save();
         console.log('幫戰創建成功:', battle._id);
 
-        await new ChangeLog({
+        await ChangeLog.create({
             userId: req.user.discordId,
             type: 'battle_create',
             message: `管理員創建幫戰，日期：${battleDate}${forceCreate ? '（強制創建）' : ''}`
-        }).save();
+        });
 
-        res.json({ success: true, message: '幫戰創建成功' });
+        res.json({ success: true, message: '幫戰創建成功', battleId: battle._id });
     } catch (err) {
         console.error('創建幫戰錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
@@ -392,13 +392,24 @@ router.post('/battle/create', isAdmin, async (req, res) => {
 router.get('/battle/current', async (req, res) => {
     try {
         const battles = await Battle.find({ status: { $in: ['pending', 'published'] } })
-            .populate('registrations.userId')
             .sort({ battleDate: 1 });
         console.log('獲取進行中幫戰:', battles.length);
-        if (!battles || battles.length === 0) {
+
+        // 獲取每場幫戰的報名信息
+        const battlesWithRegistrations = await Promise.all(battles.map(async (battle) => {
+            const registrations = await Registration.find({ battleId: battle._id })
+                .populate('userId', 'discordId username gameId job');
+            return {
+                ...battle.toObject(),
+                registrations
+            };
+        }));
+
+        if (!battlesWithRegistrations || battlesWithRegistrations.length === 0) {
             return res.json({ success: false, message: '無進行中的幫戰' });
         }
-        res.json({ success: true, battles });
+
+        res.json({ success: true, battles: battlesWithRegistrations });
     } catch (err) {
         console.error('獲取幫戰錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
@@ -427,13 +438,14 @@ router.post('/registration/register', async (req, res) => {
             isBackup: now > battle.deadline
         });
         await registration.save();
-        await new ChangeLog({
+        await ChangeLog.create({
             userId: req.user.discordId,
             type: 'register',
             message: `用戶 ${req.user.gameId} 報名幫戰，日期：${battle.battleDate}`
-        }).save();
+        });
         res.json({ success: true, message: registration.isBackup ? '您已進入備選名單' : '報名成功' });
     } catch (err) {
+        console.error('報名錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -454,14 +466,15 @@ router.post('/registration/cancel', async (req, res) => {
         if (!registration) {
             return res.status(400).json({ success: false, message: '您未報名' });
         }
-        await registration.remove();
-        await new ChangeLog({
+        await registration.deleteOne();
+        await ChangeLog.create({
             userId: req.user.discordId,
             type: 'cancel',
             message: `用戶 ${req.user.gameId} 取消報名，日期：${battle.battleDate}`
-        }).save();
+        });
         res.json({ success: true, message: '取消報名成功' });
     } catch (err) {
+        console.error('取消報名錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -490,13 +503,14 @@ router.post('/registration/proxy', async (req, res) => {
             isBackup: now > battle.deadline
         });
         await registration.save();
-        await new ChangeLog({
+        await ChangeLog.create({
             userId: req.user.discordId,
             type: 'proxy_register',
             message: `用戶 ${req.user.gameId} 為 ${targetUser.gameId} 代報名，日期：${battle.battleDate}`
-        }).save();
+        });
         res.json({ success: true, message: '代報名成功' });
     } catch (err) {
+        console.error('代報名錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -512,13 +526,14 @@ router.post('/battle/formation', isAdmin, async (req, res) => {
         battle.formation = formation;
         battle.status = 'published';
         await battle.save();
-        await new ChangeLog({
+        await ChangeLog.create({
             userId: req.user.discordId,
             type: 'formation_update',
             message: `管理員更新幫戰陣型，日期：${battle.battleDate}`
-        }).save();
+        });
         res.json({ success: true, message: '陣型更新並發布成功' });
     } catch (err) {
+        console.error('更新陣型錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -541,13 +556,14 @@ router.post('/battle/confirm', isAdmin, async (req, res) => {
         }
         battle.status = 'confirmed';
         await battle.save();
-        await new ChangeLog({
+        await ChangeLog.create({
             userId: req.user.discordId,
             type: 'battle_confirm',
             message: `管理員確認幫戰出戰表，日期：${battle.battleDate}`
-        }).save();
+        });
         res.json({ success: true, message: '出戰表確認成功' });
     } catch (err) {
+        console.error('確認出戰表錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -560,6 +576,7 @@ router.get('/users', isAdmin, async (req, res) => {
         const users = await User.find(query).select('discordId gameId job isAdmin onLeave');
         res.json({ success: true, users });
     } catch (err) {
+        console.error('獲取成員列表錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -575,13 +592,14 @@ router.post('/user/update', isAdmin, async (req, res) => {
         user.isAdmin = isAdmin;
         user.onLeave = onLeave;
         await user.save();
-        await new ChangeLog({
+        await ChangeLog.create({
             userId: req.user.discordId,
             type: 'user_update',
             message: `管理員更新用戶 ${user.gameId} 狀態：管理員=${isAdmin}, 請假=${onLeave}`
-        }).save();
+        });
         res.json({ success: true, message: '用戶狀態更新成功' });
     } catch (err) {
+        console.error('更新成員狀態錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -593,14 +611,15 @@ router.delete('/user/:id', isAdmin, async (req, res) => {
         if (!user) {
             return res.status(400).json({ success: false, message: '用戶不存在' });
         }
-        await user.remove();
-        await new ChangeLog({
+        await user.deleteOne();
+        await ChangeLog.create({
             userId: req.user.discordId,
             type: 'user_delete',
             message: `管理員刪除用戶 ${user.gameId}`
-        }).save();
+        });
         res.json({ success: true, message: '用戶刪除成功' });
     } catch (err) {
+        console.error('刪除成員錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -619,13 +638,14 @@ router.post('/leave/request', async (req, res) => {
             status: 'pending'
         });
         await leaveRequest.save();
-        await new ChangeLog({
+        await ChangeLog.create({
             userId: req.user.discordId,
             type: 'leave_request',
             message: `用戶 ${req.user.gameId} 申請請假，日期：${date}`
-        }).save();
+        });
         res.json({ success: true, message: '請假申請提交成功' });
     } catch (err) {
+        console.error('請假申請錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -645,48 +665,14 @@ router.post('/leave/approve', isAdmin, async (req, res) => {
             user.onLeave = true;
             await user.save();
         }
-        await new ChangeLog({
+        await ChangeLog.create({
             userId: req.user.discordId,
             type: 'leave_approve',
             message: `管理員${status === 'approved' ? '批准' : '拒絕'}用戶 ${leaveRequest.userId.gameId} 的請假申請`
-        }).save();
+        });
         res.json({ success: true, message: `請假申請已${status === 'approved' ? '批准' : '拒絕'}` });
     } catch (err) {
-        res.status(500).json({ success: false, message: '伺服器錯誤' });
-    }
-});
-
-// 職業變更申請
-router.post('/job/change', async (req, res) => {
-    try {
-        const { newJob } = req.body;
-        const user = await User.findOne({ discordId: req.user.discordId });
-        await new ChangeLog({
-            userId: req.user.discordId,
-            type: 'job_change',
-            message: `用戶 ${user.gameId} 申請將職業從 ${user.job} 變更為 ${newJob}`
-        }).save();
-        res.json({ success: true, message: '職業變更申請提交成功，待管理員審核' });
-    } catch (err) {
-        res.status(500).json({ success: false, message: '伺服器錯誤' });
-    }
-});
-
-// ID 變更申請
-router.post('/id/change', async (req, res) => {
-    try {
-        const { newGameId } = req.body;
-        if (!/^[\u4e00-\u9fa5]{1,7}$/.test(newGameId)) {
-            return res.status(400).json({ success: false, message: '遊戲 ID 需為 1-7 個中文字符' });
-        }
-        const user = await User.findOne({ discordId: req.user.discordId });
-        await new ChangeLog({
-            userId: req.user.discordId,
-            type: 'id_change',
-            message: `用戶 ${user.gameId} 申請將遊戲 ID 變更為 ${newGameId}`
-        }).save();
-        res.json({ success: true, message: 'ID 變更申請提交成功，待管理員審核' });
-    } catch (err) {
+        console.error('審核請假錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -711,6 +697,7 @@ router.get('/attendance', async (req, res) => {
             }
         });
     } catch (err) {
+        console.error('獲取出勤記錄錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -730,6 +717,7 @@ router.get('/statistics', isAdmin, async (req, res) => {
             }
         });
     } catch (err) {
+        console.error('獲取統計資料錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
@@ -745,6 +733,7 @@ router.get('/changelogs', isAdmin, async (req, res) => {
         const logs = await ChangeLog.find(query).sort({ timestamp: -1 });
         res.json({ success: true, logs });
     } catch (err) {
+        console.error('獲取變更日誌錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
