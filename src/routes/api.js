@@ -342,27 +342,53 @@ router.post('/pending-requests/:requestId', isAdmin, async (req, res) => {
 });
 
 // 創建新幫戰
+// 在 api.js 中修改創建新幫戰的路由
 router.post('/battle/create', isAdmin, async (req, res) => {
     try {
         const { battleDate, deadline } = req.body;
-        const existingBattle = await Battle.findOne({ status: { $ne: 'confirmed' } });
-        if (existingBattle) {
-            return res.status(400).json({ success: false, message: '請先確認最終出戰表', action: 'confirm' });
+        
+        // 查找狀態為 'published' 的幫戰（已發布但未確認最終出戰表）
+        const publishedBattle = await Battle.findOne({ status: 'published' });
+        if (publishedBattle) {
+            return res.status(400).json({ 
+                success: false, 
+                message: '請先確認最終出戰表', 
+                action: 'confirm',
+                battleId: publishedBattle._id,
+                battleDate: publishedBattle.battleDate
+            });
         }
+        
+        // 查找狀態為 'pending' 的幫戰（報名中）
+        const pendingBattle = await Battle.findOne({ status: 'pending' });
+        if (pendingBattle) {
+            return res.status(400).json({ 
+                success: false, 
+                message: '目前有進行中的幫戰報名，請先完成或取消', 
+                action: 'existing_pending',
+                battleId: pendingBattle._id,
+                battleDate: pendingBattle.battleDate
+            });
+        }
+        
         const battle = new Battle({
             battleDate: new Date(battleDate),
             deadline: new Date(deadline),
             status: 'pending',
             formation: { groupA: [], groupB: [] }
         });
+        
         await battle.save();
+        
         await new ChangeLog({
             userId: req.user.discordId,
             type: 'battle_create',
             message: `管理員創建幫戰，日期：${battleDate}`
         }).save();
+        
         res.json({ success: true, message: '幫戰創建成功' });
     } catch (err) {
+        console.error('創建幫戰錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
