@@ -39,6 +39,23 @@ app.use(session({
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
     }
 }));
+// 添加在 app.use(passport.session()); 之後
+app.use((req, res, next) => {
+    if (req.path === '/' || req.path.includes('.html')) {
+        console.log('=== SESSION DEBUG ===');
+        console.log('Path:', req.path);
+        console.log('Session ID:', req.sessionID);
+        console.log('Session passport:', req.session?.passport);
+        console.log('req.user:', req.user ? {
+            username: req.user.username,
+            discordId: req.user.discordId,
+            gameId: req.user.gameId
+        } : 'null');
+        console.log('isAuthenticated:', req.isAuthenticated?.());
+        console.log('====================');
+    }
+    next();
+});
 app.use(passport.initialize());
 app.use(passport.session());
 

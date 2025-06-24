@@ -65,14 +65,20 @@ passport.use(new DiscordStrategy({
 }));
 
 passport.serializeUser((user, done) => {
-    console.log('🔄 Serializing user:', user._id);
-    done(null, user._id);
+    console.log('🔄 Serializing user:', {
+        id: user.id,
+        _id: user._id,
+        discordId: user.discordId,
+        username: user.username
+    });
+    // 使用 discordId 作為序列化鍵，因為它更穩定
+    done(null, user.discordId);
 });
 
-passport.deserializeUser(async (id, done) => {
+passport.deserializeUser(async (discordId, done) => {
     try {
-        console.log('🔄 Deserializing user ID:', id);
-        const user = await User.findById(id);
+        console.log('🔄 Deserializing user discordId:', discordId);
+        const user = await User.findOne({ discordId: discordId });
         if (user) {
             console.log('✅ User deserialized:', user.username);
             done(null, user);
