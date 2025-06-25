@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -36,19 +35,22 @@
     <main class="flex-1 p-4 md:ml-64">
         <button id="hamburger" class="md:hidden text-gray-800 text-2xl mb-4">☰</button>
         <div class="container mx-auto">
-            <h1 class="text-2xl font-bold mb-6">⚡ 幫戰管理</h1>
-            <form id="battleForm" class="bg-white p-6 rounded-lg shadow-lg mb-6">
-                <div class="mb-4">
-                    <label class="block text-gray-700">幫戰日期：</label>
-                    <input type="datetime-local" id="battleDate" class="border rounded w-full p-2" required>
-                </div>
-                <div class="mb-4">
-                    <label class="block text-gray-700">報名截止時間：</label>
-                    <input type="datetime-local" id="deadline" class="border rounded w-full p-2" required>
-                </div>
-                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">創建幫戰</button>
-            </form>
-            <div id="battleStatus" class="bg-white p-6 rounded-lg shadow-lg"></div>
+            <h1 class="text-2xl font-bold mb-4">⚔️ 幫戰管理</h1>
+            <div class="bg-white p-4 rounded-lg shadow-lg mb-4">
+                <h2 class="text-lg font-bold mb-2">創建幫戰</h2>
+                <form id="createBattleForm">
+                    <div class="mb-4">
+                        <label class="block text-gray-700">幫戰日期</label>
+                        <input type="datetime-local" id="battleDate" class="border rounded w-full p-2" required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-gray-700">報名截止日期</label>
+                        <input type="datetime-local" id="deadline" class="border rounded w-full p-2" required>
+                    </div>
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">創建</button>
+                </form>
+            </div>
+            <div id="battleStatus" class="bg-white p-4 rounded-lg shadow-lg"></div>
         </div>
     </main>
     <div id="notification" class="fixed top-4 right-4 hidden p-4 rounded shadow-lg"></div>
@@ -83,11 +85,15 @@
                 const data = await res.json();
                 console.log('檢查管理員身份:', data);
                 if (!data.success || !data.user.isAdmin) {
+                    showNotification('無管理員權限', 'error');
                     window.location.href = '/home.html';
+                    return false;
                 }
+                return true;
             } catch (err) {
                 console.error('檢查管理員身份錯誤:', err);
                 showNotification('無法驗證身份', 'error');
+                return false;
             } finally {
                 showLoading(false);
             }
@@ -97,98 +103,38 @@
             showLoading(true);
             try {
                 const res = await fetch('/api/battle/current', { credentials: 'include' });
+                if (!res.ok) {
+                    throw new Error(`HTTP 錯誤: ${res.status}`);
+                }
                 const data = await res.json();
                 console.log('幫戰數據:', data);
                 const battleStatus = document.getElementById('battleStatus');
                 if (data.success && data.battles && data.battles.length > 0) {
-                    battleStatus.innerHTML = `
-                        <h2 class="text-lg font-bold mb-4">進行中的幫戰</h2>
-                        ${data.battles.map(battle => `
-                            <div class="battle-card border-b py-4">
-                                <p><strong>日期：</strong>${new Date(battle.battleDate).toLocaleString()}</p>
-                                <p><strong>報名截止：</strong>${new Date(battle.deadline).toLocaleString()}</p>
-                                <p><strong>狀態：</strong>${battle.status === 'pending' ? '報名中' : '已發布待確認'}</p>
-                                <p><strong>報名人數：</strong>${battle.registrations ? battle.registrations.length : 0}</p>
-                                <div class="mt-2 flex space-x-2">
-                                    ${battle.status === 'pending' ? `
-                                        <button class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" 
-                                                onclick="registerForBattle('${battle._id}')">報名</button>
-                                        <button class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" 
-                                                onclick="editFormation('${battle._id}')">編輯陣型</button>
-                                        <button class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" 
-                                                onclick="closeBattle('${battle._id}')">關閉報名</button>
-                                        <button class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600" 
-                                                onclick="deleteBattle('${battle._id}')">刪除幫戰</button>
-                                    ` : `
-                                        <button class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" 
-                                                onclick="editFormation('${battle._id}')">確認出戰表</button>
-                                        <button class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600" 
-                                                onclick="deleteBattle('${battle._id}')">刪除幫戰</button>
-                                    `}
-                                </div>
+                    battleStatus.innerHTML = data.battles.map(battle => `
+                        <div class="battle-card border-b py-4">
+                            <p>日期：${new Date(battle.battleDate).toLocaleString()}</p>
+                            <p>報名截止：${new Date(battle.deadline).toLocaleString()}</p>
+                            <p>狀態：${battle.status === 'pending' ? '報名中' : battle.status === 'published' ? '已發布' : '已關閉'}</p>
+                            <p>報名人數：${battle.registrations.length}</p>
+                            <div class="mt-2 space-x-2">
+                                <a href="/admin/formation_management.html?battleId=${battle._id}" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">編輯陣型</a>
+                                <button onclick="deleteBattle('${battle._id}')" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">刪除</button>
                             </div>
-                        `).join('')}
-                    `;
+                        </div>
+                    `).join('');
                 } else {
-                    battleStatus.innerHTML = '<p class="text-gray-600">目前無進行中的幫戰</p>';
+                    battleStatus.innerHTML = '<p class="text-gray-600">無進行中的幫戰</p>';
                 }
             } catch (err) {
-                console.error('載入幫戰狀態錯誤:', err);
-                showNotification('無法載入幫戰狀態', 'error');
-            } finally {
-                showLoading(false);
-            }
-        }
-
-        async function registerForBattle(battleId) {
-            showLoading(true);
-            try {
-                const res = await fetch('/api/registration/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ battleId })
-                });
-                const data = await res.json();
-                console.log('報名結果:', data);
-                showNotification(data.message, data.success ? 'success' : 'error');
-                if (data.success) {
-                    loadBattleStatus();
-                }
-            } catch (err) {
-                console.error('報名錯誤:', err);
-                showNotification('報名失敗', 'error');
-            } finally {
-                showLoading(false);
-            }
-        }
-
-        async function closeBattle(battleId) {
-            if (!confirm('確定要關閉報名嗎？此操作無法撤銷。')) return;
-            showLoading(true);
-            try {
-                const res = await fetch('/api/battle/close', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ battleId })
-                });
-                const data = await res.json();
-                console.log('關閉報名結果:', data);
-                showNotification(data.message, data.success ? 'success' : 'error');
-                if (data.success) {
-                    loadBattleStatus();
-                }
-            } catch (err) {
-                console.error('關閉報名錯誤:', err);
-                showNotification('關閉報名失敗', 'error');
+                console.error('載入幫戰錯誤:', err);
+                showNotification('無法載入幫戰列表', 'error');
             } finally {
                 showLoading(false);
             }
         }
 
         async function deleteBattle(battleId) {
-            if (!confirm('確定要刪除此幫戰嗎？此操作將刪除所有相關報名記錄。')) return;
+            if (!confirm('確定要刪除此幫戰？')) return;
             showLoading(true);
             try {
                 const res = await fetch(`/api/battle/${battleId}`, {
@@ -209,19 +155,17 @@
             }
         }
 
-        function editFormation(battleId) {
-            console.log('導向陣型管理:', battleId);
-            window.location.href = `/admin/formation_management.html?battleId=${battleId}`;
-        }
-
-        document.getElementById('battleForm').addEventListener('submit', async (e) => {
+        document.getElementById('createBattleForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const battleDate = document.getElementById('battleDate').value;
             const deadline = document.getElementById('deadline').value;
-            console.log('提交幫戰創建:', { battleDate, deadline });
+            if (!battleDate || !deadline) {
+                showNotification('請填寫所有欄位', 'error');
+                return;
+            }
             showLoading(true);
             try {
-                const res = await fetch('/api/battle/create', {
+                const res = await fetch('/api/battle', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
@@ -232,33 +176,11 @@
                 showNotification(data.message, data.success ? 'success' : 'error');
                 if (data.success) {
                     loadBattleStatus();
-                } else if (data.action === 'confirm') {
-                    const userChoice = confirm(
-                        `請先確認最終出戰表（日期：${new Date(data.battleDate).toLocaleString()}）。\n` +
-                        `點擊「確定」前往確認頁面，點擊「取消」繼續創建新幫戰。`
-                    );
-                    if (userChoice) {
-                        console.log('導向確認頁面:', data.battleId);
-                        window.location.href = `/admin/formation_management.html?battleId=${data.battleId}`;
-                    } else {
-                        console.log('繼續創建新幫戰');
-                        const retryRes = await fetch('/api/battle/create', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'include',
-                            body: JSON.stringify({ battleDate, deadline, forceCreate: true })
-                        });
-                        const retryData = await retryRes.json();
-                        console.log('強制創建結果:', retryData);
-                        showNotification(retryData.message, retryData.success ? 'success' : 'error');
-                        if (retryData.success) {
-                            loadBattleStatus();
-                        }
-                    }
+                    document.getElementById('createBattleForm').reset();
                 }
             } catch (err) {
                 console.error('創建幫戰錯誤:', err);
-                showNotification('創建失敗', 'error');
+                showNotification('創建幫戰失敗', 'error');
             } finally {
                 showLoading(false);
             }
@@ -270,11 +192,13 @@
         });
 
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('頁面加載，檢查管理員並載入幫戰狀態');
-            checkAdmin();
-            loadBattleStatus();
+            console.log('頁面加載，檢查管理員並載入幫戰');
+            checkAdmin().then(isAdmin => {
+                if (isAdmin) {
+                    loadBattleStatus();
+                }
+            });
         });
     </script>
 </body>
 </html>
-```

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>創建幫戰診斷工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .debug-btn {
+            background-color: #28a745;
+        }
+        .debug-btn:hover {
+            background-color: #1e7e34;
+        }
+        .test-btn {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .test-btn:hover {
+            background-color: #e0a800;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 創建幫戰診斷工具</h1>
+        <p>用於診斷創建幫戰失敗的問題</p>
+    </div>
+
+    <div class="container">
+        <h2>1. 系統狀態檢查</h2>
+        <button onclick="checkSystemStatus()" class="debug-btn">檢查系統狀態</button>
+    </div>
+
+    <div class="container">
+        <h2>2. 測試創建功能</h2>
+        <button onclick="testCreateFunction()" class="test-btn">測試基本創建功能</button>
+    </div>
+
+    <div class="container">
+        <h2>3. 創建幫戰</h2>
+        <form id="battleForm">
+            <div class="form-group">
+                <label for="battleDate">幫戰日期:</label>
+                <input type="datetime-local" id="battleDate" required>
+            </div>
+            <div class="form-group">
+                <label for="deadline">報名截止時間:</label>
+                <input type="datetime-local" id="deadline" required>
+            </div>
+            <div class="form-group">
+                <label for="forceCreate">強制創建:</label>
+                <select id="forceCreate">
+                    <option value="false">否</option>
+                    <option value="true">是</option>
+                </select>
+            </div>
+            <button type="submit">創建幫戰</button>
+        </form>
+    </div>
+
+    <div class="container">
+        <h2>4. 診斷結果</h2>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        // 設置預設日期時間
+        function setDefaultDates() {
+            const now = new Date();
+            const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+            
+            document.getElementById('deadline').value = tomorrow.toISOString().slice(0, 16);
+            document.getElementById('battleDate').value = nextWeek.toISOString().slice(0, 16);
+        }
+
+        // 顯示結果
+        function showResult(message, type) {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.textContent = message;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        // 檢查系統狀態
+        async function checkSystemStatus() {
+            showResult('🔍 正在檢查系統狀態...', 'info');
+            
+            try {
+                const response = await fetch('/api/debug/battle-status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult(`✅ 系統狀態檢查結果:\n${JSON.stringify(data.debug, null, 2)}`, 'success');
+                } else {
+                    showResult(`❌ 系統狀態檢查失敗:\n${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ 系統狀態檢查錯誤:\n${error.message}\n${error.stack}`, 'error');
+            }
+        }
+
+        // 測試創建功能
+        async function testCreateFunction() {
+            showResult('🧪 正在測試基本創建功能...', 'info');
+            
+            try {
+                const response = await fetch('/api/debug/test-create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult(`✅ 基本創建功能測試成功:\n${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    showResult(`❌ 基本創建功能測試失敗:\n${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ 測試創建功能錯誤:\n${error.message}\n${error.stack}`, 'error');
+            }
+        }
+
+        // 創建幫戰
+        async function createBattle(battleDate, deadline, forceCreate) {
+            showResult(`📝 正在創建幫戰...\n日期: ${battleDate}\n截止: ${deadline}\n強制: ${forceCreate}`, 'info');
+            
+            try {
+                const response = await fetch('/api/battle/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        battleDate,
+                        deadline,
+                        forceCreate: forceCreate === 'true'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult(`✅ 幫戰創建成功:\n${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    showResult(`❌ 幫戰創建失敗:\n${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ 創建幫戰錯誤:\n${error.message}\n${error.stack}`, 'error');
+            }
+        }
+
+        // 表單提交處理
+        document.getElementById('battleForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const battleDate = document.getElementById('battleDate').value;
+            const deadline = document.getElementById('deadline').value;
+            const forceCreate = document.getElementById('forceCreate').value;
+            
+            if (!battleDate || !deadline) {
+                showResult('❌ 請填寫所有必要欄位', 'error');
+                return;
+            }
+            
+            await createBattle(battleDate, deadline, forceCreate);
+        });
+
+        // 檢查用戶狀態
+        async function checkUserStatus() {
+            try {
+                const response = await fetch('/api/user/status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult(`👤 用戶狀態:\n${JSON.stringify(data.user, null, 2)}`, 'info');
+                    
+                    if (!data.user.isAdmin) {
+                        showResult('⚠️ 警告: 當前用戶不是管理員，無法創建幫戰', 'error');
+                    }
+                } else {
+                    showResult(`❌ 無法獲取用戶狀態:\n${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ 檢查用戶狀態錯誤:\n${error.message}`, 'error');
+            }
+        }
+
+        // 頁面載入時執行
+        window.addEventListener('load', () => {
+            setDefaultDates();
+            checkUserStatus();
+            showResult('🚀 診斷工具已載入', 'info');
+        });
+    </script>
+</body>
+</html>
