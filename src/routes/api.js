@@ -343,52 +343,19 @@ router.post('/pending-requests/:requestId', isAdmin, async (req, res) => {
     }
 });
 
-// 在 src/routes/api.js 中的創建幫戰路由，添加更詳細的錯誤處理和日誌
-
-// 創建新幫戰 - 修復版本
+// 創建新幫戰
 router.post('/battle/create', isAdmin, async (req, res) => {
     try {
         const { battleDate, deadline, forceCreate } = req.body;
-        console.log('📝 創建幫戰請求詳細資訊:');
-        console.log('- battleDate:', battleDate, typeof battleDate);
-        console.log('- deadline:', deadline, typeof deadline);
-        console.log('- forceCreate:', forceCreate);
-        console.log('- req.user:', req.user ? req.user.discordId : 'undefined');
+        console.log('創建幫戰請求:', { battleDate, deadline, forceCreate });
 
-        // 1. 驗證必要參數
         if (!battleDate || !deadline) {
-            console.log('❌ 缺少必要參數');
-            return res.status(400).json({ 
-                success: false, 
-                message: '請提供幫戰日期和報名截止時間',
-                debug: { battleDate, deadline }
-            });
+            return res.status(400).json({ success: false, message: '請提供幫戰日期和報名截止時間' });
         }
 
-        // 2. 驗證日期格式
-        const battleDateObj = new Date(battleDate);
-        const deadlineObj = new Date(deadline);
-        
-        if (isNaN(battleDateObj.getTime()) || isNaN(deadlineObj.getTime())) {
-            console.log('❌ 日期格式無效');
-            return res.status(400).json({ 
-                success: false, 
-                message: '日期格式無效',
-                debug: { 
-                    battleDate, 
-                    deadline,
-                    battleDateValid: !isNaN(battleDateObj.getTime()),
-                    deadlineValid: !isNaN(deadlineObj.getTime())
-                }
-            });
-        }
-
-        // 3. 檢查是否有未確認的出戰表
         const publishedBattle = await Battle.findOne({ status: 'published' });
-        console.log('🔍 檢查現有已發布幫戰:', publishedBattle ? publishedBattle._id : 'none');
-        
         if (publishedBattle && !forceCreate) {
-            console.log('⚠️ 發現未確認的出戰表:', publishedBattle._id);
+            console.log('發現未確認的出戰表:', publishedBattle._id);
             return res.status(400).json({
                 success: false,
                 message: '請先確認最終出戰表',
@@ -398,164 +365,26 @@ router.post('/battle/create', isAdmin, async (req, res) => {
             });
         }
 
-        // 4. 創建新幫戰
-        console.log('📅 準備創建幫戰...');
         const battle = new Battle({
-            battleDate: battleDateObj,
-            deadline: deadlineObj,
+            battleDate: new Date(battleDate),
+            deadline: new Date(deadline),
             status: 'pending',
             formation: { groupA: [], groupB: [] }
         });
 
-        console.log('💾 保存幫戰到資料庫...');
-        const savedBattle = await battle.save();
-        console.log('✅ 幫戰創建成功:', savedBattle._id);
+        await battle.save();
+        console.log('幫戰創建成功:', battle._id);
 
-        // 5. 記錄變更日誌
         await ChangeLog.create({
             userId: req.user.discordId,
             type: 'battle_create',
             message: `管理員創建幫戰，日期：${battleDate}${forceCreate ? '（強制創建）' : ''}`
         });
 
-        console.log('📋 變更日誌已記錄');
-
-        res.json({ 
-            success: true, 
-            message: '幫戰創建成功', 
-            battleId: savedBattle._id,
-            debug: {
-                battleDate: savedBattle.battleDate,
-                deadline: savedBattle.deadline,
-                status: savedBattle.status
-            }
-        });
-
+        res.json({ success: true, message: '幫戰創建成功', battleId: battle._id });
     } catch (err) {
-        console.error('❌ 創建幫戰詳細錯誤:', {
-            message: err.message,
-            stack: err.stack,
-            name: err.name
-        });
-        
-        // 檢查是否為 MongoDB 連線問題
-        if (err.name === 'MongooseError' || err.name === 'MongoError') {
-            return res.status(500).json({ 
-                success: false, 
-                message: '資料庫連線錯誤，請稍後再試',
-                error: err.message
-            });
-        }
-        
-        // 檢查是否為驗證錯誤
-        if (err.name === 'ValidationError') {
-            return res.status(400).json({ 
-                success: false, 
-                message: '資料驗證失敗',
-                error: err.message,
-                details: err.errors
-            });
-        }
-        
-        res.status(500).json({ 
-            success: false, 
-            message: '伺服器錯誤',
-            error: err.message
-        });
-    }
-});
-
-// 額外的診斷路由 - 臨時添加用於除錯
-router.get('/debug/battle-status', isAdmin, async (req, res) => {
-    try {
-        console.log('🔍 診斷幫戰狀態...');
-        
-        // 檢查所有幫戰
-        const allBattles = await Battle.find().sort({ createdAt: -1 }).limit(10);
-        console.log('📊 最近10個幫戰:', allBattles.map(b => ({
-            id: b._id,
-            date: b.battleDate,
-            status: b.status,
-            created: b.createdAt
-        })));
-
-        // 檢查已發布的幫戰
-        const publishedBattles = await Battle.find({ status: 'published' });
-        console.log('📋 已發布的幫戰:', publishedBattles.length);
-
-        // 檢查資料庫連線
-        const dbState = mongoose.connection.readyState;
-        const dbStates = {
-            0: 'disconnected',
-            1: 'connected',
-            2: 'connecting',
-            3: 'disconnecting'
-        };
-
-        res.json({
-            success: true,
-            debug: {
-                databaseStatus: dbStates[dbState],
-                totalBattles: await Battle.countDocuments(),
-                pendingBattles: await Battle.countDocuments({ status: 'pending' }),
-                publishedBattles: await Battle.countDocuments({ status: 'published' }),
-                confirmedBattles: await Battle.countDocuments({ status: 'confirmed' }),
-                recentBattles: allBattles.map(b => ({
-                    id: b._id,
-                    date: b.battleDate,
-                    status: b.status,
-                    created: b.createdAt
-                })),
-                currentUser: {
-                    id: req.user._id,
-                    discordId: req.user.discordId,
-                    isAdmin: req.user.isAdmin
-                }
-            }
-        });
-
-    } catch (err) {
-        console.error('❌ 診斷錯誤:', err);
-        res.status(500).json({
-            success: false,
-            error: err.message,
-            stack: err.stack
-        });
-    }
-});
-
-// 臨時的測試路由 - 用於驗證基本功能
-router.post('/debug/test-create', isAdmin, async (req, res) => {
-    try {
-        console.log('🧪 測試創建幫戰...');
-        
-        // 使用固定的測試數據
-        const testBattle = new Battle({
-            battleDate: new Date('2024-12-31'),
-            deadline: new Date('2024-12-30'),
-            status: 'pending',
-            formation: { groupA: [], groupB: [] }
-        });
-
-        const saved = await testBattle.save();
-        console.log('✅ 測試幫戰創建成功:', saved._id);
-
-        // 立即刪除測試數據
-        await Battle.findByIdAndDelete(saved._id);
-        console.log('🗑️ 測試數據已清理');
-
-        res.json({
-            success: true,
-            message: '測試創建成功',
-            testId: saved._id
-        });
-
-    } catch (err) {
-        console.error('❌ 測試創建失敗:', err);
-        res.status(500).json({
-            success: false,
-            error: err.message
-        });
+        console.error('創建幫戰錯誤:', err);
+        res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
 
