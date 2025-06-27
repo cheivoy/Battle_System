@@ -165,23 +165,18 @@
             }
             showLoading(true);
             try {
+                // 載入所有幫戰資料 (含報名)
                 const res = await fetch('/api/battle/current', { credentials: 'include' });
-                if (!res.ok) {
-                    throw new Error(`HTTP 錯誤: ${res.status}`);
-                }
+                if (!res.ok) throw new Error(`HTTP 錯誤: ${res.status}`);
                 const data = await res.json();
                 if (!data.success || !data.battles) {
                     showNotification('無法載入幫戰數據', 'error');
-                    document.getElementById('battleInfo').innerHTML = '<p class="text-red-500">無法載入幫戰數據</p>';
-                    document.getElementById('registrationStatus').innerHTML = '';
                     return;
                 }
 
                 const battle = data.battles.find(b => b._id.toString() === battleId);
                 if (!battle) {
                     showNotification('幫戰不存在或已結束', 'error');
-                    document.getElementById('battleInfo').innerHTML = '<p class="text-red-500">幫戰不存在或已結束</p>';
-                    document.getElementById('registrationStatus').innerHTML = '';
                     return;
                 }
 
@@ -196,9 +191,7 @@
 
                 const now = new Date();
                 const deadline = new Date(battle.deadline);
-                const cancelDeadline = new Date(new Date(battle.battleDate).getTime() - 60 * 60 * 1000); // 幫戰前 1 小時
-                const isBeforeDeadline = now <= deadline;
-                const isBeforeCancelDeadline = now <= cancelDeadline;
+                const cancelDeadline = new Date(new Date(battle.battleDate).getTime() - 60 * 60 * 1000);
 
                 // 顯示基本資訊
                 document.getElementById('battleInfo').innerHTML = `
@@ -206,34 +199,28 @@
                 <h2 class="text-lg font-bold">幫戰資訊</h2>
                 <p>日期：${new Date(battle.battleDate).toLocaleString()}</p>
                 <p>報名截止：${deadline.toLocaleString()}</p>
-                <p>狀態：${battle.status === 'pending' ? '報名中' : battle.status === 'published' ? '已發布' : '已關閉'}</p>
+                <p>狀態：${battle.status}</p>
                 <p>報名人數：${battle.registrations.length}</p>
             </div>
         `;
 
-                // 構建報名按鈕邏輯
+                // 判斷報名按鈕顯示
                 let buttonHTML = '';
-                if (battle.status === 'pending') {
+
+                if (['published', 'pending', 'deadline'].includes(battle.status)) {
                     if (!isRegistered) {
-                        // 可報名（即使過了 deadline）
-                        buttonHTML = `
-                    <button id="registerBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-2">
-                        報名
-                    </button>`;
+                        buttonHTML = `<button id="registerBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-2">報名</button>`;
                     } else {
-                        if (isBeforeCancelDeadline) {
-                            buttonHTML = `
-                        <button id="registerBtn" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 mt-2">
-                            取消報名
-                        </button>`;
+                        if (now <= cancelDeadline) {
+                            buttonHTML = `<button id="registerBtn" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 mt-2">取消報名</button>`;
                         } else {
                             buttonHTML = `
-                        <button class="bg-gray-400 text-white px-4 py-2 rounded mt-2 cursor-not-allowed opacity-60" disabled>
-                            無法取消報名
-                        </button>
+                        <button class="bg-gray-400 text-white px-4 py-2 rounded mt-2 cursor-not-allowed opacity-60" disabled>無法取消報名</button>
                         <p class="text-sm text-gray-600 mt-1">已超過取消時限，如需更改請聯絡管理員</p>`;
                         }
                     }
+                } else {
+                    buttonHTML = `<p class="text-red-500">報名已結束</p>`;
                 }
 
                 document.getElementById('registrationStatus').innerHTML = `
@@ -242,7 +229,7 @@
             ${buttonHTML}
         `;
 
-                // 綁定按鈕事件
+                // 綁定報名／取消按鈕事件
                 const registerBtn = document.getElementById('registerBtn');
                 if (registerBtn) {
                     registerBtn.addEventListener('click', async () => {
@@ -266,6 +253,7 @@
                         }
                     });
                 }
+
             } catch (err) {
                 console.error('載入幫戰資訊錯誤:', err);
                 showNotification('無法載入幫戰資訊', 'error');
@@ -273,6 +261,7 @@
                 showLoading(false);
             }
         }
+
 
         document.getElementById('hamburger').addEventListener('click', () => {
             const sidebar = document.getElementById('sidebar');
