@@ -166,8 +166,9 @@
             showLoading(true);
             try {
                 const res = await fetch('/api/battle/current', { credentials: 'include' });
-                if (!res.ok) throw new Error(`HTTP 錯誤: ${res.status}`);
-
+                if (!res.ok) {
+                    throw new Error(`HTTP 錯誤: ${res.status}`);
+                }
                 const data = await res.json();
                 if (!data.success || !data.battles) {
                     showNotification('無法載入幫戰數據', 'error');
@@ -192,70 +193,73 @@
 
                 const registration = battle.registrations.find(reg => reg.userId._id.toString() === user._id.toString());
                 const isRegistered = !!registration;
-                const now = new Date();
-                const battleDate = new Date(battle.battleDate);
-                const cancelDeadline = new Date(battleDate.getTime() - 60 * 60 * 1000); // 開打前 1 小時
-                const isAfterFinalCancelTime = now > cancelDeadline;
 
+                const now = new Date();
+                const deadline = new Date(battle.deadline);
+                const cancelDeadline = new Date(new Date(battle.battleDate).getTime() - 60 * 60 * 1000); // 幫戰前 1 小時
+                const isBeforeDeadline = now <= deadline;
+                const isBeforeCancelDeadline = now <= cancelDeadline;
+
+                // 顯示基本資訊
                 document.getElementById('battleInfo').innerHTML = `
             <div class="battle-card border-b py-4">
                 <h2 class="text-lg font-bold">幫戰資訊</h2>
-                <p>日期：${battleDate.toLocaleString()}</p>
-                <p>報名截止：${new Date(battle.deadline).toLocaleString()}</p>
+                <p>日期：${new Date(battle.battleDate).toLocaleString()}</p>
+                <p>報名截止：${deadline.toLocaleString()}</p>
                 <p>狀態：${battle.status === 'pending' ? '報名中' : battle.status === 'published' ? '已發布' : '已關閉'}</p>
                 <p>報名人數：${battle.registrations.length}</p>
             </div>
         `;
 
-                let statusHtml = `<h2 class="text-lg font-bold mb-2">報名狀態</h2>
-            <p>您${isRegistered ? (registration.isBackup ? '已進入後備名單' : '已報名') : '尚未報名'}</p>`;
-
+                // 構建報名按鈕邏輯
+                let buttonHTML = '';
                 if (battle.status === 'pending') {
-                    if (!isRegistered || (isRegistered && !isAfterFinalCancelTime)) {
-                        statusHtml += `
+                    if (!isRegistered) {
+                        // 可報名（即使過了 deadline）
+                        buttonHTML = `
                     <button id="registerBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-2">
-                        ${isRegistered ? '取消報名' : '報名'}
-                    </button>
-                `;
-                    } else if (isRegistered && isAfterFinalCancelTime) {
-                        statusHtml += `<p class="text-red-600 mt-2">報名已截止，如需更改請聯繫管理員</p>`;
+                        報名
+                    </button>`;
+                    } else {
+                        if (isBeforeCancelDeadline) {
+                            buttonHTML = `
+                        <button id="registerBtn" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 mt-2">
+                            取消報名
+                        </button>`;
+                        } else {
+                            buttonHTML = `
+                        <button class="bg-gray-400 text-white px-4 py-2 rounded mt-2 cursor-not-allowed opacity-60" disabled>
+                            無法取消報名
+                        </button>
+                        <p class="text-sm text-gray-600 mt-1">已超過取消時限，如需更改請聯絡管理員</p>`;
+                        }
                     }
                 }
 
-                document.getElementById('registrationStatus').innerHTML = statusHtml;
+                document.getElementById('registrationStatus').innerHTML = `
+            <h2 class="text-lg font-bold mb-2">報名狀態</h2>
+            <p>您${isRegistered ? (registration.isBackup ? '已進入後備名單' : '已報名') : '尚未報名'}</p>
+            ${buttonHTML}
+        `;
 
-                const btn = document.getElementById('registerBtn');
-                if (btn) {
-                    btn.addEventListener('click', async () => {
+                // 綁定按鈕事件
+                const registerBtn = document.getElementById('registerBtn');
+                if (registerBtn) {
+                    registerBtn.addEventListener('click', async () => {
                         showLoading(true);
                         try {
-                            if (isRegistered) {
-                                if (isAfterFinalCancelTime) {
-                                    showNotification('報名已截止，請聯繫指揮', 'error');
-                                    return;
-                                }
-                                const res = await fetch('/api/registration/cancel', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    credentials: 'include',
-                                    body: JSON.stringify({ battleId })
-                                });
-                                const result = await res.json();
-                                showNotification(result.message, result.success ? 'success' : 'error');
-                                if (result.success) loadBattleInfo();
-                            } else {
-                                const res = await fetch('/api/registration/register', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    credentials: 'include',
-                                    body: JSON.stringify({ battleId })
-                                });
-                                const result = await res.json();
-                                showNotification(result.message, result.success ? 'success' : 'error');
-                                if (result.success) loadBattleInfo();
-                            }
+                            const url = isRegistered ? '/api/registration/cancel' : '/api/registration/register';
+                            const res = await fetch(url, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                credentials: 'include',
+                                body: JSON.stringify({ battleId })
+                            });
+                            const result = await res.json();
+                            showNotification(result.message, result.success ? 'success' : 'error');
+                            if (result.success) loadBattleInfo();
                         } catch (err) {
-                            console.error('操作失敗:', err);
+                            console.error('操作錯誤:', err);
                             showNotification('操作失敗', 'error');
                         } finally {
                             showLoading(false);
