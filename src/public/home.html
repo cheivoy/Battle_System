@@ -119,43 +119,6 @@
             }
         }
 
-        async function loadBattles() {
-            showLoading(true);
-            try {
-                const res = await fetch('/api/battle/current', { credentials: 'include' });
-                if (!res.ok) throw new Error(`HTTP 錯誤: ${res.status}`);
-                const data = await res.json();
-                console.log('幫戰數據:', data);
-                const battleSelect = document.getElementById('battleSelect');
-                if (data.success && data.battles && data.battles.length > 0) {
-                    // 篩選 status 是 published，且現在時間小於截止時間的幫戰
-                    const now = new Date();
-                    const ongoingBattles = data.battles.filter(b => b.status === 'published' && new Date(b.deadline) > now);
-                    if (ongoingBattles.length > 0) {
-                        battleSelect.innerHTML = '<option value="">請選擇幫戰</option>' +
-                            ongoingBattles.map(b => `<option value="${b._id}">${new Date(b.battleDate).toLocaleString()} (報名中)</option>`).join('');
-                        if (ongoingBattles.length === 1) {
-                            battleSelect.value = ongoingBattles[0]._id;
-                            loadBattleInfo();
-                        }
-                    } else {
-                        battleSelect.innerHTML = '<option value="">無進行中的幫戰</option>';
-                        document.getElementById('battleInfo').innerHTML = '<p class="text-gray-600">目前無進行中的幫戰</p>';
-                        document.getElementById('registrationStatus').innerHTML = '';
-                    }
-                } else {
-                    battleSelect.innerHTML = '<option value="">無進行中的幫戰</option>';
-                    document.getElementById('battleInfo').innerHTML = '<p class="text-gray-600">目前無進行中的幫戰</p>';
-                    document.getElementById('registrationStatus').innerHTML = '';
-                }
-            } catch (err) {
-                console.error('載入幫戰錯誤:', err);
-                showNotification('無法載入幫戰列表', 'error');
-            } finally {
-                showLoading(false);
-            }
-        }
-
         async function loadBattleInfo() {
             const battleId = document.getElementById('battleSelect').value;
             if (!battleId) {
@@ -168,7 +131,6 @@
                 const res = await fetch('/api/battle/current', { credentials: 'include' });
                 if (!res.ok) throw new Error(`HTTP 錯誤: ${res.status}`);
                 const data = await res.json();
-                console.log('幫戰數據:', data);
                 if (!data.success || !data.battles) {
                     showNotification('無法載入幫戰數據', 'error');
                     document.getElementById('battleInfo').innerHTML = '<p class="text-red-500">無法載入幫戰數據</p>';
@@ -187,21 +149,22 @@
                     showNotification('請先設置遊戲 ID 和職業', 'error');
                     return;
                 }
+
                 const registration = battle.registrations.find(reg => reg.userId._id.toString() === user._id.toString());
                 const isRegistered = !!registration;
 
                 const now = new Date();
-                const battleDate = new Date(battle.battleDate);
-                const deadline = new Date(battle.deadline);
-                const isAfterDeadline = now > deadline;
-                const isAfterFinalLock = now > new Date(battleDate.getTime() - 60 * 60 * 1000); // 幫戰開始前1小時
+                const battleStartTime = new Date(battle.battleDate);
+                const oneHourBeforeStart = new Date(battleStartTime.getTime() - 60 * 60 * 1000);
+                const isPastDeadline = now > battle.deadline;
+                const isAfterFinalCancelTime = now > oneHourBeforeStart;
 
                 document.getElementById('battleInfo').innerHTML = `
             <div class="battle-card border-b py-4">
                 <h2 class="text-lg font-bold">幫戰資訊</h2>
                 <p>日期：${new Date(battle.battleDate).toLocaleString()}</p>
                 <p>報名截止：${new Date(battle.deadline).toLocaleString()}</p>
-                <p>狀態：${battle.status === 'pending' ? '草稿' : battle.status === 'published' ? '報名中' : battle.status === 'confirmed' ? '已確認' : '已關閉'}</p>
+                <p>狀態：${battle.status === 'pending' ? '報名中' : battle.status === 'published' ? '已發布' : '已關閉'}</p>
                 <p>報名人數：${battle.registrations.length}</p>
             </div>
         `;
@@ -209,54 +172,60 @@
                 document.getElementById('registrationStatus').innerHTML = `
             <h2 class="text-lg font-bold mb-2">報名狀態</h2>
             <p>您${isRegistered ? (registration.isBackup ? '已進入後備名單' : '已報名') : '尚未報名'}</p>
-            ${battle.status === 'published' ? (() => {
-                        if (isAfterFinalLock) {
-                            return '<p class="text-red-500">報名已結束，無法再操作</p>';
-                        }
-                        if (isRegistered && isAfterDeadline) {
-                            return '<p class="text-yellow-500">您已在後備名單中，如需變更請聯絡管理員</p>';
-                        }
-                        return `
-                    <button id="registerBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-2">
-                        ${isRegistered ? (isAfterDeadline ? '無法取消報名' : '取消報名') : (isAfterDeadline ? '加入後備名單' : '報名')}
-                    </button>
-                `;
-                    })() : ''}
+            ${battle.status === 'pending' ? `
+                <button id="registerBtn" 
+                    class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-2"
+                    ${isAfterFinalCancelTime ? 'disabled' : ''}
+                >
+                    ${isRegistered ? (isAfterFinalCancelTime ? '無法取消報名' : '取消報名') : '報名'}
+                </button>
+                ${isAfterFinalCancelTime && isRegistered ? '<p class="text-red-600 mt-2">報名已截止，如需更改請聯繫管理員</p>' : ''}
+            ` : ''}
         `;
 
-                if (battle.status === 'published' && document.getElementById('registerBtn')) {
+                if (battle.status === 'pending' && document.getElementById('registerBtn')) {
                     document.getElementById('registerBtn').addEventListener('click', async () => {
-                        if (isAfterFinalLock) {
-                            showNotification('報名已結束，無法報名', 'error');
-                            return;
-                        }
-                        if (isRegistered && isAfterDeadline) {
-                            showNotification('您無法在報名截止後取消報名，請聯絡管理員', 'error');
-                            return;
-                        }
                         showLoading(true);
                         try {
-                            const endpoint = isRegistered ? '/api/registration/cancel' : '/api/registration/register';
-                            const res = await fetch(endpoint, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                credentials: 'include',
-                                body: JSON.stringify({ battleId })
-                            });
-                            const data = await res.json();
-                            showNotification(data.message, data.success ? 'success' : 'error');
-                            if (data.success) loadBattleInfo();
+                            if (!isRegistered) {
+                                // 報名（允許截止後報名備選）
+                                const res = await fetch('/api/registration/register', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    credentials: 'include',
+                                    body: JSON.stringify({ battleId })
+                                });
+                                const data = await res.json();
+                                showNotification(data.message, data.success ? 'success' : 'error');
+                                if (data.success) loadBattleInfo();
+                            } else {
+                                // 取消報名（截止前可取消）
+                                if (isAfterFinalCancelTime) {
+                                    showNotification('報名已截止，無法取消，如需更改請聯繫管理員', 'error');
+                                    return;
+                                }
+                                const res = await fetch('/api/registration/cancel', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    credentials: 'include',
+                                    body: JSON.stringify({ battleId })
+                                });
+                                const data = await res.json();
+                                showNotification(data.message, data.success ? 'success' : 'error');
+                                if (data.success) loadBattleInfo();
+                            }
                         } catch (err) {
-                            console.error('報名錯誤:', err);
-                            showNotification('報名操作失敗', 'error');
+                            showNotification('操作失敗', 'error');
+                            console.error(err);
                         } finally {
                             showLoading(false);
                         }
                     });
                 }
+
             } catch (err) {
-                console.error('載入幫戰資訊錯誤:', err);
                 showNotification('無法載入幫戰資訊', 'error');
+                console.error('載入幫戰資訊錯誤:', err);
             } finally {
                 showLoading(false);
             }
