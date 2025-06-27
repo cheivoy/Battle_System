@@ -477,33 +477,41 @@ router.get('/battle/current', async (req, res) => {
 router.post('/registration/register', async (req, res) => {
     try {
         const { battleId } = req.body;
-        if (!battleId) {
-            return res.status(400).json({ success: false, message: '請提供幫戰 ID' });
-        }
+        if (!battleId) return res.status(400).json({ success: false, message: '請提供幫戰 ID' });
+
         const battle = await Battle.findById(battleId);
-        if (!battle || battle.status !== 'pending') {
+        if (!battle || !['published', 'pending', 'deadline'].includes(battle.status)) {
             return res.status(400).json({ success: false, message: '無進行中的幫戰或報名已結束' });
         }
+
         const now = new Date();
-        if (now > battle.deadline) {
-            return res.status(400).json({ success: false, message: '報名已截止，請聯繫指揮' });
+
+        // deadline 狀態仍可報名，但進入備選
+        const isBackup = battle.status === 'deadline' || now > battle.deadline;
+
+        if (now > battle.battleDate) {
+            return res.status(400).json({ success: false, message: '幫戰已結束，無法報名' });
         }
+
         const existing = await Registration.findOne({ battleId: battle._id, userId: req.user._id });
         if (existing) {
             return res.status(400).json({ success: false, message: '您已報名' });
         }
+
         const registration = new Registration({
             battleId: battle._id,
             userId: req.user._id,
-            isBackup: now > battle.deadline
+            isBackup
         });
         await registration.save();
+
         await ChangeLog.create({
             userId: req.user.discordId,
             type: 'register',
             message: `用戶 ${req.user.gameId} 報名幫戰，日期：${battle.battleDate}`
         });
-        res.json({ success: true, message: registration.isBackup ? '您已進入備選名單' : '報名成功' });
+
+        res.json({ success: true, message: isBackup ? '您已進入備選名單' : '報名成功' });
     } catch (err) {
         console.error('報名錯誤:', err);
         res.status(500).json({ success: false, message: '伺服器錯誤' });
@@ -517,12 +525,13 @@ router.post('/registration/cancel', async (req, res) => {
         if (!battleId) return res.status(400).json({ success: false, message: '請提供幫戰 ID' });
 
         const battle = await Battle.findById(battleId);
-        if (!battle || battle.status !== 'pending') {
+        if (!battle || !['published', 'pending', 'deadline'].includes(battle.status)) {
             return res.status(400).json({ success: false, message: '無進行中的幫戰或報名已結束' });
         }
 
         const now = new Date();
-        const cancelDeadline = new Date(battle.battleDate.getTime() - 60 * 60 * 1000);
+        const cancelDeadline = new Date(battle.battleDate.getTime() - 60 * 60 * 1000); // 幫戰前 1 小時
+
         if (now > cancelDeadline) {
             return res.status(400).json({ success: false, message: '已超過取消時間，如需更改請聯繫管理員' });
         }
@@ -533,6 +542,7 @@ router.post('/registration/cancel', async (req, res) => {
         }
 
         await registration.deleteOne();
+
         await ChangeLog.create({
             userId: req.user.discordId,
             type: 'cancel',
@@ -545,7 +555,6 @@ router.post('/registration/cancel', async (req, res) => {
         res.status(500).json({ success: false, message: '伺服器錯誤' });
     }
 });
-
 
 // 代報名
 router.post('/registration/proxy', async (req, res) => {
