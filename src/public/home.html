@@ -119,6 +119,43 @@
             }
         }
 
+        async function loadBattles() {
+            showLoading(true);
+            try {
+                const res = await fetch('/api/battle/current', { credentials: 'include' });
+                if (!res.ok) throw new Error(`HTTP 錯誤: ${res.status}`);
+                const data = await res.json();
+                console.log('幫戰數據:', data);
+                const battleSelect = document.getElementById('battleSelect');
+                if (data.success && data.battles && data.battles.length > 0) {
+                    // 篩選 status 是 published，且現在時間小於截止時間的幫戰
+                    const now = new Date();
+                    const ongoingBattles = data.battles.filter(b => b.status === 'published' && new Date(b.deadline) > now);
+                    if (ongoingBattles.length > 0) {
+                        battleSelect.innerHTML = '<option value="">請選擇幫戰</option>' +
+                            ongoingBattles.map(b => `<option value="${b._id}">${new Date(b.battleDate).toLocaleString()} (報名中)</option>`).join('');
+                        if (ongoingBattles.length === 1) {
+                            battleSelect.value = ongoingBattles[0]._id;
+                            loadBattleInfo();
+                        }
+                    } else {
+                        battleSelect.innerHTML = '<option value="">無進行中的幫戰</option>';
+                        document.getElementById('battleInfo').innerHTML = '<p class="text-gray-600">目前無進行中的幫戰</p>';
+                        document.getElementById('registrationStatus').innerHTML = '';
+                    }
+                } else {
+                    battleSelect.innerHTML = '<option value="">無進行中的幫戰</option>';
+                    document.getElementById('battleInfo').innerHTML = '<p class="text-gray-600">目前無進行中的幫戰</p>';
+                    document.getElementById('registrationStatus').innerHTML = '';
+                }
+            } catch (err) {
+                console.error('載入幫戰錯誤:', err);
+                showNotification('無法載入幫戰列表', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
         async function loadBattleInfo() {
             const battleId = document.getElementById('battleSelect').value;
             if (!battleId) {
